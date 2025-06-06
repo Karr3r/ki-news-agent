@@ -21,10 +21,11 @@ openai.api_key = OPENAI_API_KEY
 
 # 3. arXiv-RSS-Feeds für KI (Machine Learning, AI, Computer Vision)
 ARXIV_FEEDS = [
-    "http://export.arxiv.org/rss/cs.LG",
     "http://export.arxiv.org/rss/cs.AI",
-    "http://export.arxiv.org/rss/cs.CV",
+   
+    
 ]
+
 
 def fetch_arxiv_entries(max_per_feed=5):
     """
@@ -99,7 +100,7 @@ def sende_email(text, betreff="Dein tägliches KI-Update"):
 
 def main():
     # 1) Neue arXiv-Artikel holen
-    artikel = fetch_arxiv_entries(max_per_feed=5)
+    artikel = fetch_arxiv_entries(max_per_feed=1)
 
     # 2) Zusammenfassung mit GPT-4 erstellen
     uebersicht = generiere_ki_uebersicht(artikel)
