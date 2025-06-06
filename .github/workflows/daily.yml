@@ -1,0 +1,44 @@
+name: Tägliches KI-Update
+
+on:
+  # 1) Cron-Schedule: 05:30 UTC (=> 07:30 MESZ)
+  schedule:
+    - cron: '30 5 * * *'
+  # 2) optional: manuelles Auslösen
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 3) Check out code
+      - uses: actions/checkout@v4
+
+      # 4) Python-Setup
+      - name: Set up Python 3.x
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      # 5) Abhängigkeiten installieren
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install feedparser openai
+
+      # 6) Umgebungsvariablen aus GitHub-Secrets
+      - name: Export environment variables
+        run: |
+          echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> $GITHUB_ENV
+          echo "EMAIL_ADDRESS=${{ secrets.EMAIL_ADDRESS }}" >> $GITHUB_ENV
+          echo "EMAIL_APP_PASSWORD=${{ secrets.EMAIL_APP_PASSWORD }}" >> $GITHUB_ENV
+          echo "EMAIL_RECEIVER=${{ secrets.EMAIL_RECEIVER }}" >> $GITHUB_ENV
+
+      # 7) Skript ausführbar machen (optional)
+      - name: Make script executable
+        run: chmod +x agent_allgemein_ki.py
+
+      # 8) Skript ausführen
+      - name: Run AI-Agent
+        run: python agent_allgemein_ki.py
