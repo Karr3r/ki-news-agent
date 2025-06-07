@@ -111,7 +111,10 @@ PROMPT_TEMPLATE = """Du bist ein hochentwickelter und wissenschaftlicher Agent, 
 def generiere_ki_uebersicht(artikel_liste):
     if not artikel_liste:
         return "Heute wurden keine neuen relevanten KI-Publikationen gefunden."
+
     inhalt = ""
+    debug_info = "\n--- DEBUG: Alle Artikel der letzten 7 Tage ---\n\n"
+
     for idx, art in enumerate(artikel_liste, start=1):
         inhalt += (
             f"{idx}. Titel: {art['title']}\n"
@@ -119,7 +122,13 @@ def generiere_ki_uebersicht(artikel_liste):
             f"   Abstract: {art['abstract']}\n"
             f"   Link: {art['link']}\n\n"
         )
-    prompt = PROMPT_TEMPLATE + inhalt
+        debug_info += (
+            f"{idx}. Titel: {art['title']}\n"
+            f"   Link: {art['link']}\n\n"
+        )
+
+    prompt = PROMPT_TEMPLATE + "\n\n" + inhalt
+
     try:
         resp = client.chat.completions.create(
             model="gpt-4",
@@ -127,9 +136,11 @@ def generiere_ki_uebersicht(artikel_liste):
             max_tokens=800,
             temperature=0.7
         )
-        return resp.choices[0].message.content.strip()
+        analyse = resp.choices[0].message.content.strip()
+        return analyse + "\n\n" + debug_info
     except Exception as e:
         return f"Fehler bei der Generierung der Übersicht: {e}"
+
 
 # 10. E-Mail-Versand
 
