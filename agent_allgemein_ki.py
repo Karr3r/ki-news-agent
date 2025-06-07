@@ -7,6 +7,7 @@ import feedparser
 import smtplib
 from email.mime.text import MIMEText
 from datetime import datetime, timedelta, timezone
+import urllib.request
 from dotenv import load_dotenv
 from openai import OpenAI
 
