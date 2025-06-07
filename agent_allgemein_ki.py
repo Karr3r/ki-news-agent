@@ -112,8 +112,8 @@ def fetch_arxiv_entries_neu():
             "published": publ_dt.isoformat()
         })
 
-print(f"[DEBUG] Insgesamt {len(artikel_liste)} neue Artikel im Zeitfenster gefunden.")
-return artikel_liste
+    print(f"[DEBUG] Insgesamt {len(artikel_liste)} neue Artikel im Zeitfenster gefunden.")
+    return artikel_liste
 
 
 
