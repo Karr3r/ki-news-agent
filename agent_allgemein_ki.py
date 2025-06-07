@@ -60,6 +60,14 @@ def fetch_arxiv_entries_neu():
         feed = feedparser.parse(data)
         print(f"[DEBUG] {len(feed.entries)} Einträge im API Feed für Kategorie {cat}.")
 
+        # Debug: Zeige Datum der ersten drei Einträge
+        for i, entry in enumerate(feed.entries[:3]):
+            print(f"[DEBUG] Beispiel-Eintrag {i+1}")
+            print(f"  ID: {entry.id}")
+            print(f"  Title: {entry.title}")
+            print(f"  published: {getattr(entry, 'published', 'nicht vorhanden')}")
+            print(f"  published_parsed: {getattr(entry, 'published_parsed', 'nicht vorhanden')}")
+
         for entry in feed.entries:
             if not hasattr(entry, "published_parsed"):
                 print(f"[DEBUG] Kein published_parsed bei Artikel {entry.get('title','(kein Titel)')}, übersprungen.")
@@ -67,12 +75,10 @@ def fetch_arxiv_entries_neu():
 
             publ_dt = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
             if not (start <= publ_dt < ende):
-                # Artikel außerhalb des Zeitfensters
                 continue
 
             artikel_id = entry.id
             if artikel_id in processed_ids:
-                # Artikel schon verarbeitet
                 continue
 
             artikel_liste.append({
@@ -127,12 +133,10 @@ def main():
         send_email("KI-News Agent: Keine neuen Artikel", "Im definierten Zeitfenster wurden keine neuen Artikel gefunden.")
         return
 
-    # Hier könnte später GPT-Analyse kommen - für jetzt einfach Liste als Text zusammenstellen
     text = "Neue arXiv-Artikel der letzten 7 Tage:\n\n"
     for art in artikel:
         text += f"- {art['title']} ({art['published']})\n  {art['link']}\n\n"
 
-    # IDs speichern, damit sie nicht erneut verarbeitet werden
     neue_ids = {art['id'] for art in artikel}
     alle_ids = processed_ids.union(neue_ids)
     save_processed_articles(alle_ids)
