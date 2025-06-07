@@ -55,8 +55,13 @@ def get_zeitfenster_utc():
 def fetch_arxiv_entries_since_last_run():
     start, ende = get_zeitfenster_utc()
     artikel_liste = []
+    headers = {'User-Agent': 'Mozilla/5.0 (compatible; KI-News-Agent/1.0; +https://github.com/Karr3r)'}
     for feed_url in ARXIV_FEEDS:
-        feed = feedparser.parse(feed_url)
+        # Feed-Daten mit User-Agent abrufen
+        request = urllib.request.Request(feed_url, headers=headers)
+        with urllib.request.urlopen(request) as response:
+            data = response.read()
+        feed = feedparser.parse(data)
         for entry in feed.entries:
             publ_dt = datetime.strptime(entry.published, "%Y-%m-%dT%H:%M:%SZ")
             publ_dt = publ_dt.replace(tzinfo=timezone.utc)
@@ -64,7 +69,7 @@ def fetch_arxiv_entries_since_last_run():
                 artikel_liste.append({
                     "title":    entry.title.strip(),
                     "authors":  [a.name.strip() for a in entry.authors],
-                    "abstract": entry.summary.replace("\n", " ").strip(),
+                    "abstract": entry.summary.replace("", " ").strip(),
                     "link":     entry.link,
                     "published": publ_dt.isoformat()
                 })
