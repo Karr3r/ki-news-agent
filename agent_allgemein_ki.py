@@ -1,123 +1,84 @@
 import os
 import json
+import urllib.request
 import feedparser
 import smtplib
 from email.mime.text import MIMEText
 from datetime import datetime, timedelta, timezone
-import urllib.request
 from dotenv import load_dotenv
-from openai import OpenAI
 
-# === Konfiguration ===
-
-# arXiv RSS-Feeds für KI-relevante Kategorien
-ARXIV_FEEDS = [
-    "http://export.arxiv.org/rss/cs.AI",
-    "http://export.arxiv.org/rss/cs.LG",
-    "http://export.arxiv.org/rss/cs.CR",
-    "http://export.arxiv.org/rss/cs.DC",
-    "http://export.arxiv.org/rss/cs.DB",
-    "http://export.arxiv.org/rss/cs.NI",
-    "http://export.arxiv.org/rss/cs.CY",
-    "http://export.arxiv.org/rss/stat.ML",
-]
-
-PROCESSED_JSON = "processed_articles.json"
-
-# Lade Umgebungsvariablen aus .env (API-Keys, E-Mail-Daten)
 load_dotenv()
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-EMAIL_ADDRESS = os.getenv("EMAIL_ADDRESS")
-EMAIL_APP_PASSWORD = os.getenv("EMAIL_APP_PASSWORD")
-EMAIL_RECEIVER = os.getenv("EMAIL_RECEIVER")
 
-client = OpenAI(api_key=OPENAI_API_KEY)
+# Kategorien, die abgefragt werden sollen
+ARXIV_CATEGORIES = ["cs.AI", "cs.LG", "cs.CR", "cs.DC", "cs.DB", "cs.NI", "cs.CY", "stat.ML"]
 
-# === Funktionen ===
+ARXIV_API_BASE = "http://export.arxiv.org/api/query?search_query=cat:{}&start=0&max_results=100"
+
+PROCESSED_ARTICLES_FILE = "processed_articles.json"
 
 def get_zeitfenster_utc():
-    # Berechnet das 7-Tage-Zeitfenster für Artikel (UTC)
-    now = datetime.now(timezone.utc)
-    start = now - timedelta(days=7)
-    print(f"[DEBUG] Zeitfenster UTC: {start.isoformat()} bis {now.isoformat()}")
-    return start, now
+    """Zeitfenster der letzten 7 Tage in UTC zurückgeben"""
+    jetzt = datetime.now(timezone.utc)
+    start = jetzt - timedelta(days=7)
+    return start, jetzt
 
 def load_processed_articles():
-    if not os.path.exists("processed_articles.json"):
-        print("[DEBUG] Datei 'processed_articles.json' existiert nicht.")
+    """Lade bereits verarbeitete Artikel-IDs aus JSON-Datei"""
+    if not os.path.exists(PROCESSED_ARTICLES_FILE):
         return set()
-    with open("processed_articles.json", "r", encoding="utf-8") as f:
+    with open(PROCESSED_ARTICLES_FILE, "r", encoding="utf-8") as f:
         try:
             data = json.load(f)
-            print(f"[DEBUG] Geladene Artikel-IDs: {list(data)[:3]} ...")
             return set(data)
-        except json.JSONDecodeError:
-            print("[DEBUG] JSON konnte nicht geladen werden.")
+        except Exception as e:
+            print(f"[DEBUG] Fehler beim Laden der verarbeiteten Artikel: {e}")
             return set()
 
-
-def save_processed_articles(processed_ids):
-    with open(PROCESSED_JSON, "w", encoding="utf-8") as f:
-        json.dump(list(processed_ids), f, indent=2)
+def save_processed_articles(ids):
+    """Speichere verarbeitete Artikel-IDs in JSON-Datei"""
+    with open(PROCESSED_ARTICLES_FILE, "w", encoding="utf-8") as f:
+        json.dump(list(ids), f, indent=2)
 
 def fetch_arxiv_entries_neu():
     start, ende = get_zeitfenster_utc()
     processed_ids = load_processed_articles()
     artikel_liste = []
 
-    headers = {
-    'User-Agent': 'Mozilla/5.0 (compatible; KI-News-Agent/1.0; +https://github.com/Karr3r)'
-    }
+    headers = {'User-Agent': 'Mozilla/5.0 (compatible; KI-News-Agent/1.0; +https://github.com/Karr3r)'}
 
-    for feed_url in ARXIV_FEEDS:
-        print(f"[DEBUG] Lade Feed: {feed_url}")
-        request = urllib.request.Request(feed_url, headers=headers)
-        with urllib.request.urlopen(request) as response:
-            data = response.read()
+    for cat in ARXIV_CATEGORIES:
+        url = ARXIV_API_BASE.format(cat)
+        print(f"[DEBUG] Lade API Feed: {url}")
+        try:
+            request = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(request) as response:
+                data = response.read()
+        except Exception as e:
+            print(f"[DEBUG] Fehler beim Abrufen des Feeds für {cat}: {e}")
+            continue
+
         feed = feedparser.parse(data)
-        print(f"[DEBUG] {len(feed.entries)} Einträge im Feed.")
-        for i, entry in enumerate(feed.entries[:5]):  # Nur die ersten 5 zum Überblick
-            print(f"[DEBUG] #{i+1}: Titel: {entry.title}, Published: {getattr(entry, 'published', 'kein published')}")
+        print(f"[DEBUG] {len(feed.entries)} Einträge im API Feed für Kategorie {cat}.")
 
         for entry in feed.entries:
-            print(f"[DEBUG] Gefundener Artikel: '{entry.title}'")
-            print(f"[DEBUG] Roh published: '{entry.published}'")
-
-            if hasattr(entry, 'published_parsed'):
-                print(f"[DEBUG] published_parsed (tuple): {entry.published_parsed}")
-            else:
-                print("[DEBUG] Kein published_parsed vorhanden")
-
-            try:
-                if hasattr(entry, 'published_parsed') and entry.published_parsed:
-                    publ_dt = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
-                else:
-                    publ_dt = datetime.strptime(entry.published, "%a, %d %b %Y %H:%M:%S %z")
-                    publ_dt = publ_dt.astimezone(timezone.utc)
-                    print(f"[DEBUG] Raw: {entry.published}")
-                    print(f"[DEBUG] Parsed UTC: {publ_dt.isoformat()}")
-            except Exception as e:
-                print(f"[DEBUG] Fehler beim Parsen von Datum: {e}")
+            if not hasattr(entry, "published_parsed"):
+                print(f"[DEBUG] Kein published_parsed bei Artikel {entry.get('title','(kein Titel)')}, übersprungen.")
                 continue
 
-            print(f"[DEBUG] Artikel Datum als datetime (UTC): {publ_dt.isoformat()}")
-            print(f"[DEBUG] Zeitfenster Start: {start.isoformat()}")
-            print(f"[DEBUG] Zeitfenster Ende : {ende.isoformat()}")
-            print(f"[DEBUG] Liegt im Zeitfenster? {start <= publ_dt < ende}")
-
+            publ_dt = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
             if not (start <= publ_dt < ende):
-                print(f"[DEBUG] Artikel '{entry.title}' außerhalb Zeitfenster, ignoriert.")
+                # Artikel außerhalb des Zeitfensters
                 continue
 
-            artikel_id = entry.link
+            artikel_id = entry.id
             if artikel_id in processed_ids:
-                print(f"[DEBUG] Artikel '{entry.title}' bereits verarbeitet, übersprungen.")
+                # Artikel schon verarbeitet
                 continue
 
             artikel_liste.append({
                 "id":       artikel_id,
                 "title":    entry.title.strip(),
-                "authors":  [a.name.strip() for a in entry.authors] if hasattr(entry, "authors") else [],
+                "authors":  [a.name for a in entry.authors] if hasattr(entry, "authors") else [],
                 "abstract": entry.summary.replace("\n", " ").strip() if hasattr(entry, "summary") else "",
                 "link":     entry.link,
                 "published": publ_dt.isoformat()
@@ -126,64 +87,57 @@ def fetch_arxiv_entries_neu():
     print(f"[DEBUG] Insgesamt {len(artikel_liste)} neue Artikel im Zeitfenster gefunden.")
     return artikel_liste
 
+def send_email(subject, body):
+    """Sende eine einfache Text-E-Mail mit den angegebenen Betreff und Inhalt"""
+    email_address = os.getenv("EMAIL_ADDRESS")
+    email_password = os.getenv("EMAIL_APP_PASSWORD")
+    email_receiver = os.getenv("EMAIL_RECEIVER")
 
+    if not (email_address and email_password and email_receiver):
+        print("[DEBUG] E-Mail-Zugangsdaten oder Empfänger nicht gesetzt.")
+        return False
 
-
-
-PROMPT_TEMPLATE = """Bitte analysiere und fasse die folgenden wissenschaftlichen Artikel aus dem Bereich Künstliche Intelligenz zusammen.
-Die Zusammenfassung soll evidenzbasiert, informativ und relevant für langfristige Technologie-Investitionen sein.
-"""
-
-def generiere_ki_uebersicht(artikel_liste):
-    if not artikel_liste:
-        return "Heute wurden keine neuen relevanten KI-Publikationen gefunden."
-    inhalt = ""
-    for idx, art in enumerate(artikel_liste, start=1):
-        inhalt += (
-            f"{idx}. Titel: {art['title']}\n"
-            f"   Autoren: {', '.join(art['authors'])}\n"
-            f"   Abstract: {art['abstract']}\n"
-            f"   Link: {art['link']}\n\n"
-        )
-    prompt = PROMPT_TEMPLATE + inhalt
-    try:
-        resp = client.chat.completions.create(
-            model="gpt-4",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=800,
-            temperature=0.7
-        )
-        return resp.choices[0].message.content.strip()
-    except Exception as e:
-        return f"Fehler bei der Generierung der Übersicht: {e}"
-
-def send_mail(text):
-    msg = MIMEText(text, "plain", "utf-8")
-    msg["Subject"] = "Tägliche KI-News aus arXiv (letzte 7 Tage)"
-    msg["From"] = EMAIL_ADDRESS
-    msg["To"] = EMAIL_RECEIVER
+    msg = MIMEText(body, "plain", "utf-8")
+    msg["Subject"] = subject
+    msg["From"] = email_address
+    msg["To"] = email_receiver
 
     try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(EMAIL_ADDRESS, EMAIL_APP_PASSWORD)
-            server.send_message(msg)
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+            smtp.login(email_address, email_password)
+            smtp.send_message(msg)
         print("[DEBUG] E-Mail erfolgreich versendet.")
+        return True
     except Exception as e:
-        print(f"[DEBUG] Fehler beim E-Mail Versand: {e}")
+        print(f"[DEBUG] Fehler beim E-Mail-Versand: {e}")
+        return False
 
 def main():
-    artikel = fetch_arxiv_entries_neu()
-    if artikel:
-        # Verarbeitete Artikel-IDs laden & erweitern
-        processed_ids = load_processed_articles()
-        new_ids = {art["id"] for art in artikel}
-        processed_ids.update(new_ids)
-        save_processed_articles(processed_ids)
-    else:
-        print("[DEBUG] Keine neuen Artikel gefunden.")
+    print("[DEBUG] Starte Agent...")
+    start, ende = get_zeitfenster_utc()
+    print(f"[DEBUG] Zeitfenster UTC: {start.isoformat()} bis {ende.isoformat()}")
 
-    mail_text = generiere_ki_uebersicht(artikel)
-    send_mail(mail_text)
+    processed_ids = load_processed_articles()
+    print(f"[DEBUG] Geladene Artikel-IDs: {list(processed_ids)[:5]} ...")
+
+    artikel = fetch_arxiv_entries_neu()
+
+    if not artikel:
+        print("[DEBUG] Keine neuen Artikel gefunden.")
+        send_email("KI-News Agent: Keine neuen Artikel", "Im definierten Zeitfenster wurden keine neuen Artikel gefunden.")
+        return
+
+    # Hier könnte später GPT-Analyse kommen - für jetzt einfach Liste als Text zusammenstellen
+    text = "Neue arXiv-Artikel der letzten 7 Tage:\n\n"
+    for art in artikel:
+        text += f"- {art['title']} ({art['published']})\n  {art['link']}\n\n"
+
+    # IDs speichern, damit sie nicht erneut verarbeitet werden
+    neue_ids = {art['id'] for art in artikel}
+    alle_ids = processed_ids.union(neue_ids)
+    save_processed_articles(alle_ids)
+
+    send_email("KI-News Agent: Neue arXiv Artikel", text)
 
 if __name__ == "__main__":
     main()
