@@ -77,15 +77,13 @@ def fetch_arxiv_entries_neu():
             print(f"[DEBUG] Gefundener Artikel: '{entry.title}', Published: {entry.published}")
 
             try:
-            publ_dt = datetime.strptime(entry.published, "%a, %d %b %Y %H:%M:%S %z")
-             publ_dt = publ_dt.astimezone(timezone.utc)
-            print(f"[DEBUG] Parsed Datum mit TZ: {publ_dt.isoformat()}")
-            except Exception as e:
-    print(f"[DEBUG] Fehler bei Datum parsen mit TZ: {e}, versuche ohne TZ")
-    # Fallback: ohne Zeitzone parsen, dann manuell UTC setzen
-    publ_dt = datetime.strptime(entry.published, "%a, %d %b %Y %H:%M:%S %Z")
-    publ_dt = publ_dt.replace(tzinfo=timezone.utc)
-    print(f"[DEBUG] Parsed Datum ohne TZ, manuell UTC gesetzt: {publ_dt.isoformat()}")
+                publ_dt = datetime.strptime(entry.published, "%a, %d %b %Y %H:%M:%S %z")
+                publ_dt = publ_dt.astimezone(timezone.utc)
+            except Exception:
+                publ_dt = datetime.strptime(entry.published, "%a, %d %b %Y %H:%M:%S %Z")
+                publ_dt = publ_dt.replace(tzinfo=timezone.utc)
+
+
 
 
 
