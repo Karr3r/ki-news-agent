@@ -75,6 +75,8 @@ def fetch_arxiv_entries_neu():
         for entry in feed.entries:
             # Debug: Alle Rohdaten der Einträge anzeigen
             print(f"[DEBUG] Gefundener Artikel: '{entry.title}', Published: {entry.published}")
+            print(f"[DEBUG] entry.published raw: {entry.published}")
+
 
             try:
                 publ_dt = datetime.strptime(entry.published, "%a, %d %b %Y %H:%M:%S %z")
