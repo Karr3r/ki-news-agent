@@ -63,8 +63,9 @@ def fetch_arxiv_entries_neu():
     start, ende = get_zeitfenster_utc()
     processed_ids = load_processed_articles()
     artikel_liste = []
+
     headers = {
-    'User-Agent': 'Mozilla/5.0 (compatible; KI-News-Agent/1.0; +https://github.com/Karr3r)'
+        'User-Agent': 'Mozilla/5.0 (compatible; KI-News-Agent/1.0; +https://github.com/Karr3r)'
     }
 
     for feed_url in ARXIV_FEEDS:
@@ -78,39 +79,40 @@ def fetch_arxiv_entries_neu():
             print(f"[DEBUG] Gefundener Artikel: '{entry.title}'")
             print(f"[DEBUG] Roh published: '{entry.published}'")
 
-        if hasattr(entry, 'published_parsed'):
-            print(f"[DEBUG] published_parsed (tuple): {entry.published_parsed}")
-        else:
-            print("[DEBUG] Kein published_parsed vorhanden")
-
-        try:
-            if hasattr(entry, 'published_parsed') and entry.published_parsed:
-                publ_dt = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
+            if hasattr(entry, 'published_parsed'):
+                print(f"[DEBUG] published_parsed (tuple): {entry.published_parsed}")
             else:
-                publ_dt = datetime.strptime(entry.published, "%a, %d %b %Y %H:%M:%S %z")
-        except Exception as e:
-            print(f"[DEBUG] Fehler beim Parsen von Datum: {e}")
-            continue
+                print("[DEBUG] Kein published_parsed vorhanden")
 
-        print(f"[DEBUG] Artikel Datum als datetime (UTC): {publ_dt.isoformat()}")
+            try:
+                if hasattr(entry, 'published_parsed') and entry.published_parsed:
+                    publ_dt = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
+                else:
+                    publ_dt = datetime.strptime(entry.published, "%a, %d %b %Y %H:%M:%S %z")
+                    publ_dt = publ_dt.astimezone(timezone.utc)
+            except Exception as e:
+                print(f"[DEBUG] Fehler beim Parsen von Datum: {e}")
+                continue
 
-        if not (start <= publ_dt < ende):
-            print(f"[DEBUG] Artikel '{entry.title}' außerhalb Zeitfenster, ignoriert.")
-            continue
+            print(f"[DEBUG] Artikel Datum als datetime (UTC): {publ_dt.isoformat()}")
 
-        artikel_id = entry.link
-        if artikel_id in processed_ids:
-            print(f"[DEBUG] Artikel '{entry.title}' bereits verarbeitet, übersprungen.")
-            continue
+            if not (start <= publ_dt < ende):
+                print(f"[DEBUG] Artikel '{entry.title}' außerhalb Zeitfenster, ignoriert.")
+                continue
 
-        artikel_liste.append({
-            "id":       artikel_id,
-            "title":    entry.title.strip(),
-            "authors":  [a.name.strip() for a in entry.authors] if hasattr(entry, "authors") else [],
-            "abstract": entry.summary.replace("\n", " ").strip() if hasattr(entry, "summary") else "",
-            "link":     entry.link,
-            "published": publ_dt.isoformat()
-        })
+            artikel_id = entry.link
+            if artikel_id in processed_ids:
+                print(f"[DEBUG] Artikel '{entry.title}' bereits verarbeitet, übersprungen.")
+                continue
+
+            artikel_liste.append({
+                "id":       artikel_id,
+                "title":    entry.title.strip(),
+                "authors":  [a.name.strip() for a in entry.authors] if hasattr(entry, "authors") else [],
+                "abstract": entry.summary.replace("\n", " ").strip() if hasattr(entry, "summary") else "",
+                "link":     entry.link,
+                "published": publ_dt.isoformat()
+            })
 
     print(f"[DEBUG] Insgesamt {len(artikel_liste)} neue Artikel im Zeitfenster gefunden.")
     return artikel_liste
