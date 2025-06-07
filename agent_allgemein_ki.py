@@ -80,8 +80,9 @@ def fetch_arxiv_entries_neu():
                 publ_dt = datetime.strptime(entry.published, "%a, %d %b %Y %H:%M:%S %z")
             except Exception as e:
                 print(f"[DEBUG] Fehler bei Datum parsen: {e}, setze als UTC-naiv")
-                publ_dt = datetime.strptime(entry.published, "%a, %d %b %Y %H:%M:%S %Z")
-            publ_dt = publ_dt.astimezone(timezone.utc)
+                publ_dt = datetime.strptime(entry.published, "%a, %d %b %Y %H:%M:%S %z")
+                publ_dt = publ_dt.astimezone(timezone.utc)
+
 
             # Filter Zeitfenster
             if not (start <= publ_dt < ende):
