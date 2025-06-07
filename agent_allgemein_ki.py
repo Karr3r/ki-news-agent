@@ -2,12 +2,11 @@
 # -*- coding: utf-8 -*-
 
 import os
-import urllib.request
 import feedparser
 import smtplib
 from email.mime.text import MIMEText
-import openai
 from dotenv import load_dotenv
+from openai import OpenAI
 
 # 1. ENV-Variablen aus .env laden
 load_dotenv()  # Liest .env im aktuellen Verzeichnis ein
@@ -17,24 +16,22 @@ EMAIL_ADDRESS      = os.getenv("EMAIL_ADDRESS")
 EMAIL_APP_PASSWORD = os.getenv("EMAIL_APP_PASSWORD")
 EMAIL_RECEIVER     = os.getenv("EMAIL_RECEIVER")
 
-# 2. OpenAI initialisieren (für GPT-Zusammenfassung)
-openai.api_key = OPENAI_API_KEY
+# 2. OpenAI-Client initialisieren (für GPT-Zusammenfassung)
+client = OpenAI(api_key=OPENAI_API_KEY)
 
-# 3. arXiv-RSS-Feed nur für cs.AI (KI)
+# 3. arXiv-RSS-Feeds (nur cs.AI als Beispiel, 1 Artikel)
 ARXIV_FEEDS = [
     "http://export.arxiv.org/rss/cs.AI",
 ]
 
 def fetch_arxiv_entries(max_per_feed=1):
+    """
+    Holt max_per_feed Artikel pro RSS-Feed von arXiv
+    und gibt eine Liste von Dicts zurück: {"title", "authors", "abstract", "link"}.
+    """
     artikel_liste = []
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (compatible; KI-News-Agent/1.0; +https://github.com/Karr3r)'
-    }
     for feed_url in ARXIV_FEEDS:
-        req = urllib.request.Request(feed_url, headers=headers)
-        with urllib.request.urlopen(req) as response:
-            feed_data = response.read()
-        feed = feedparser.parse(feed_data)
+        feed = feedparser.parse(feed_url)
         for entry in feed.entries[:max_per_feed]:
             titel   = entry.title.strip()
             autore  = [a.name.strip() for a in entry.authors]
@@ -49,6 +46,9 @@ def fetch_arxiv_entries(max_per_feed=1):
     return artikel_liste
 
 def generiere_ki_uebersicht(artikel_liste):
+    """
+    Erzeugt via GPT-4 eine kurze Zusammenfassung (200–300 Wörter).
+    """
     if not artikel_liste:
         return "Heute wurden keine neuen KI-Publikationen gefunden."
 
@@ -67,7 +67,7 @@ def generiere_ki_uebersicht(artikel_liste):
     prompt += "Bitte formuliere in gut lesbarem Deutsch."
 
     try:
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-4",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=600,
@@ -78,6 +78,9 @@ def generiere_ki_uebersicht(artikel_liste):
         return f"Fehler bei der Generierung der Übersicht: {e}"
 
 def sende_email(text, betreff="Dein tägliches KI-Update"):
+    """
+    Schickt den übergebenen Text als E-Mail per Gmail-SMTP (Port 465, SSL).
+    """
     msg = MIMEText(text, "plain", "utf-8")
     msg["Subject"] = betreff
     msg["From"] = EMAIL_ADDRESS
@@ -92,8 +95,13 @@ def sende_email(text, betreff="Dein tägliches KI-Update"):
         print(f"Fehler beim Versenden der E-Mail: {e}")
 
 def main():
+    # 1) Neue arXiv-Artikel holen
     artikel = fetch_arxiv_entries(max_per_feed=1)
+
+    # 2) Zusammenfassung mit GPT-4 erstellen
     uebersicht = generiere_ki_uebersicht(artikel)
+
+    # 3) E-Mail versenden
     sende_email(uebersicht)
 
 if __name__ == "__main__":
