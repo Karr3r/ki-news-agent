@@ -65,18 +65,18 @@ def fetch_arxiv_entries_neu():
     artikel_liste = []
     headers = {
     'User-Agent': 'Mozilla/5.0 (compatible; KI-News-Agent/1.0; +https://github.com/Karr3r)'
-}
+    }
 
-for feed_url in ARXIV_FEEDS:
-    print(f"[DEBUG] Lade Feed: {feed_url}")
-    request = urllib.request.Request(feed_url, headers=headers)
-    with urllib.request.urlopen(request) as response:
-        data = response.read()
-    feed = feedparser.parse(data)
+    for feed_url in ARXIV_FEEDS:
+        print(f"[DEBUG] Lade Feed: {feed_url}")
+        request = urllib.request.Request(feed_url, headers=headers)
+        with urllib.request.urlopen(request) as response:
+            data = response.read()
+        feed = feedparser.parse(data)
 
-    for entry in feed.entries:
-        print(f"[DEBUG] Gefundener Artikel: '{entry.title}'")
-        print(f"[DEBUG] Roh published: '{entry.published}'")
+        for entry in feed.entries:
+            print(f"[DEBUG] Gefundener Artikel: '{entry.title}'")
+            print(f"[DEBUG] Roh published: '{entry.published}'")
 
         if hasattr(entry, 'published_parsed'):
             print(f"[DEBUG] published_parsed (tuple): {entry.published_parsed}")
@@ -84,11 +84,9 @@ for feed_url in ARXIV_FEEDS:
             print("[DEBUG] Kein published_parsed vorhanden")
 
         try:
-            # Bevorzugt published_parsed (struct_time)
             if hasattr(entry, 'published_parsed') and entry.published_parsed:
                 publ_dt = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
             else:
-                # Fallback auf String-Parsing
                 publ_dt = datetime.strptime(entry.published, "%a, %d %b %Y %H:%M:%S %z")
         except Exception as e:
             print(f"[DEBUG] Fehler beim Parsen von Datum: {e}")
@@ -96,7 +94,6 @@ for feed_url in ARXIV_FEEDS:
 
         print(f"[DEBUG] Artikel Datum als datetime (UTC): {publ_dt.isoformat()}")
 
-        # Zeitfensterprüfung
         if not (start <= publ_dt < ende):
             print(f"[DEBUG] Artikel '{entry.title}' außerhalb Zeitfenster, ignoriert.")
             continue
@@ -117,6 +114,7 @@ for feed_url in ARXIV_FEEDS:
 
 print(f"[DEBUG] Insgesamt {len(artikel_liste)} neue Artikel im Zeitfenster gefunden.")
 return artikel_liste
+
 
 
 PROMPT_TEMPLATE = """Bitte analysiere und fasse die folgenden wissenschaftlichen Artikel aus dem Bereich Künstliche Intelligenz zusammen.
