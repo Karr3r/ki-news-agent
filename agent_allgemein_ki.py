@@ -63,42 +63,61 @@ def fetch_arxiv_entries_neu():
     start, ende = get_zeitfenster_utc()
     processed_ids = load_processed_articles()
     artikel_liste = []
-    headers = {'User-Agent': 'Mozilla/5.0 (compatible; KI-News-Agent/1.0; +https://github.com/Karr3r)'}
-    for feed_url in ARXIV_FEEDS:
-        print(f"[DEBUG] Lade Feed: {feed_url}")
-        request = urllib.request.Request(feed_url, headers=headers)
-        with urllib.request.urlopen(request) as response:
-            data = response.read()
-        feed = feedparser.parse(data)
-        for entry in feed.entries:
-            print(f"[DEBUG] Gefundener Artikel: '{entry.title}', Published: {entry.published}")
-            try:
+    headers = {
+    'User-Agent': 'Mozilla/5.0 (compatible; KI-News-Agent/1.0; +https://github.com/Karr3r)'
+}
+
+for feed_url in ARXIV_FEEDS:
+    print(f"[DEBUG] Lade Feed: {feed_url}")
+    request = urllib.request.Request(feed_url, headers=headers)
+    with urllib.request.urlopen(request) as response:
+        data = response.read()
+    feed = feedparser.parse(data)
+
+    for entry in feed.entries:
+        print(f"[DEBUG] Gefundener Artikel: '{entry.title}'")
+        print(f"[DEBUG] Roh published: '{entry.published}'")
+
+        if hasattr(entry, 'published_parsed'):
+            print(f"[DEBUG] published_parsed (tuple): {entry.published_parsed}")
+        else:
+            print("[DEBUG] Kein published_parsed vorhanden")
+
+        try:
+            # Bevorzugt published_parsed (struct_time)
+            if hasattr(entry, 'published_parsed') and entry.published_parsed:
+                publ_dt = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
+            else:
+                # Fallback auf String-Parsing
                 publ_dt = datetime.strptime(entry.published, "%a, %d %b %Y %H:%M:%S %z")
-            except Exception as e:
-                print(f"[DEBUG] Fehler bei Datum parsen: {e}, setze als UTC-naiv")
-                publ_dt = datetime.strptime(entry.published, "%a, %d %b %Y %H:%M:%S %Z")
-                publ_dt = publ_dt.replace(tzinfo=timezone.utc)
+        except Exception as e:
+            print(f"[DEBUG] Fehler beim Parsen von Datum: {e}")
+            continue
 
-            if not (start <= publ_dt < ende):
-                print(f"[DEBUG] Artikel '{entry.title}' außerhalb Zeitfenster, ignoriert.")
-                continue
+        print(f"[DEBUG] Artikel Datum als datetime (UTC): {publ_dt.isoformat()}")
 
-            artikel_id = entry.link
-            if artikel_id in processed_ids:
-                print(f"[DEBUG] Artikel '{entry.title}' bereits verarbeitet, übersprungen.")
-                continue
+        # Zeitfensterprüfung
+        if not (start <= publ_dt < ende):
+            print(f"[DEBUG] Artikel '{entry.title}' außerhalb Zeitfenster, ignoriert.")
+            continue
 
-            artikel_liste.append({
-                "id": artikel_id,
-                "title": entry.title.strip(),
-                "authors": [a.name.strip() for a in entry.authors] if hasattr(entry, "authors") else [],
-                "abstract": entry.summary.replace("\n", " ").strip() if hasattr(entry, "summary") else "",
-                "link": entry.link,
-                "published": publ_dt.isoformat()
-            })
+        artikel_id = entry.link
+        if artikel_id in processed_ids:
+            print(f"[DEBUG] Artikel '{entry.title}' bereits verarbeitet, übersprungen.")
+            continue
 
-    print(f"[DEBUG] Insgesamt {len(artikel_liste)} neue Artikel im Zeitfenster gefunden.")
-    return artikel_liste
+        artikel_liste.append({
+            "id":       artikel_id,
+            "title":    entry.title.strip(),
+            "authors":  [a.name.strip() for a in entry.authors] if hasattr(entry, "authors") else [],
+            "abstract": entry.summary.replace("\n", " ").strip() if hasattr(entry, "summary") else "",
+            "link":     entry.link,
+            "published": publ_dt.isoformat()
+        })
+
+print(f"[DEBUG] Insgesamt {len(artikel_liste)} neue Artikel im Zeitfenster gefunden.")
+return artikel_liste
+
 
 PROMPT_TEMPLATE = """Bitte analysiere und fasse die folgenden wissenschaftlichen Artikel aus dem Bereich Künstliche Intelligenz zusammen.
 Die Zusammenfassung soll evidenzbasiert, informativ und relevant für langfristige Technologie-Investitionen sein.
