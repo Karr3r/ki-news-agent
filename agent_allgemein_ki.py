@@ -64,7 +64,7 @@ def fetch_arxiv_entries_since_last_run():
             data = response.read()
         feed = feedparser.parse(data)
         for entry in feed.entries:
-            publ_dt = datetime.strptime(entry.published, "%Y-%m-%dT%H:%M:%SZ")
+            publ_dt = datetime.strptime(entry.published, "%a, %d %b %Y %H:%M:%S %z")
             publ_dt = publ_dt.replace(tzinfo=timezone.utc)
             if start <= publ_dt < ende:
                 artikel_liste.append({
