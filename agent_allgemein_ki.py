@@ -5,6 +5,7 @@ import os
 import feedparser
 import smtplib
 import json
+import time
 from email.mime.text import MIMEText
 from datetime import datetime, timedelta, timezone
 import urllib.request
@@ -33,68 +34,79 @@ ARXIV_FEEDS = [
     "http://export.arxiv.org/rss/stat.ML",
 ]
 
-# 4. Veröffentlichungsfenster: letzte 7 Tage
-ZEITFENSTER_TAGE = 7
-
-# 5. Gelesene Artikel merken
+# 4. Artikel-Duplikate tracken
 PROCESSED_FILE = "processed_articles.json"
 
-def lade_bekannte_links():
-    try:
+def load_processed_ids():
+    if os.path.exists(PROCESSED_FILE):
         with open(PROCESSED_FILE, "r") as f:
             return set(json.load(f))
-    except Exception:
-        return set()
+    return set()
 
-def speichere_bekannte_links(links):
-    try:
-        with open(PROCESSED_FILE, "w") as f:
-            json.dump(sorted(list(links)), f, indent=2)
-    except Exception as e:
-        print(f"Fehler beim Speichern von processed_articles.json: {e}")
+def save_processed_ids(ids):
+    with open(PROCESSED_FILE, "w") as f:
+        json.dump(sorted(list(ids)), f)
 
-# 6. Neue Artikel aus dem Zeitraum holen
+# 5. robustes Öffnen
+
+def robust_urlopen(request, retries=3, delay=5):
+    for i in range(retries):
+        try:
+            with urllib.request.urlopen(request) as response:
+                return response.read()
+        except Exception as e:
+            print(f"Fehler beim Abrufen (Versuch {i+1}/{retries}): {e}")
+            time.sleep(delay)
+    raise ConnectionError("Fehler: Verbindung wurde mehrfach zurückgesetzt.")
+
+# 6. Zeitfenster: letzte 7 Tage (UTC)
+def get_zeitfenster_letzte_woche():
+    ende = datetime.now(timezone.utc)
+    start = ende - timedelta(days=7)
+    return start, ende
+
+# 7. Artikel abrufen & filtern
 
 def fetch_arxiv_entries_neu():
-    start = datetime.now(timezone.utc) - timedelta(days=ZEITFENSTER_TAGE)
-    bekannte_links = lade_bekannte_links()
-    neue_links = set()
+    start, ende = get_zeitfenster_letzte_woche()
+    bekannte_ids = load_processed_ids()
+    neue_ids = set()
     artikel_liste = []
-
     headers = {'User-Agent': 'Mozilla/5.0 (compatible; KI-News-Agent/1.0; +https://github.com/Karr3r)'}
+
     for feed_url in ARXIV_FEEDS:
         request = urllib.request.Request(feed_url, headers=headers)
-        with urllib.request.urlopen(request) as response:
-            data = response.read()
+        data = robust_urlopen(request)
         feed = feedparser.parse(data)
+
         for entry in feed.entries:
             publ_dt = datetime.strptime(entry.published, "%a, %d %b %Y %H:%M:%S %z")
             publ_dt = publ_dt.astimezone(timezone.utc)
-            if publ_dt >= start and entry.link not in bekannte_links:
+            eid = entry.id if hasattr(entry, "id") else entry.link
+            if start <= publ_dt <= ende and eid not in bekannte_ids:
                 artikel_liste.append({
-                    "title":    entry.title.strip(),
-                    "authors":  [a.name.strip() for a in entry.authors],
-                    "abstract": entry.summary.replace("", " ").strip(),
-                    "link":     entry.link,
+                    "title": entry.title.strip(),
+                    "authors": [a.name.strip() for a in entry.authors],
+                    "abstract": entry.summary.replace("\n", " ").strip(),
+                    "link": entry.link,
                     "published": publ_dt.isoformat()
                 })
-                neue_links.add(entry.link)
+                neue_ids.add(eid)
 
-    if neue_links:
-        bekannte_links.update(neue_links)
-        speichere_bekannte_links(bekannte_links)
+    if neue_ids:
+        bekannte_ids.update(neue_ids)
+        save_processed_ids(bekannte_ids)
 
     return artikel_liste
 
-# 7. Wissenschaftlich-investmentbasierter Prompt
-
+# 8. Wissenschaftlich-investmentbasierter Prompt
 PROMPT_TEMPLATE = """Du bist ein hochentwickelter und wissenschaftlicher Agent, der eigenstaendig das Internet und wissenschaftliche Datenbanken nach den neuesten empirischen Erkenntnissen durchsucht, um ein langfristiges (5 bis 10 Jahre) Investment- und Technologie-Monitoring im Bereich 'Kuenstliche Intelligenz' und 'Dezentrale Dateninfrastruktur' durchzufuehren. Dein Nutzer hat bereits 1000 Euro in eine Auswahl von Krypto-Token investiert, sowohl im Off-Chain Storage (FIL, STORJ, ASI/OCEAN, BTT, BZZ, SC) als auch im On-Chain Data Availability Layer (ETH, TIA, AVAIL, AR, NEAR), und moechte diese Positionen bei Bedarf evidenzbasiert anpassen.
         Du beginnst jede Analyse, indem du systematisch nach aktuellen und belastbaren Quellen suchst: peer-reviewte Studien, Konferenzbeitraege (NeurIPS, ICLR, IEEE, ACM, SOSP, SIGCOMM) und Preprints (z.B.arXiv). Besonders relevant sind quantitative Messdaten zu Netzwerk-Adoption, Storage-Volumen, Transaktionszahlen, Entwickler-Aktivitaet, Token-OEkonomie und regulatorischen Rahmenbedingungen.
         Ergaenzend wertest du Marktanalysen (z.B. Messari, L2BEAT, DePIN Scan), technische Roadmaps und wissenschaftlich relevante Whitepapers aus. Du integrierst auch neue Paradigmen der Forschung wie ZK-Rollups, modulare Blockchain-Architekturen, KI-optimierte Infrastruktur, Data-DAOs oder DePIN, sofern sie empirisch begruendet und potenziell disruptiv sind.
         Ziel deiner Arbeit ist eine kritische, evidenzbasierte Bewertung der technologischen und oekonomischen Relevanz dieser Projekte. Jede Einschaetzung wird ausschliesslich auf wissenschaftlicher Grundlage getroffen. Du bewertest Chancen und Risiken mit maximaler Sorgfalt. Spekulative Aussagen oder Marketingbehauptungen haben keinen Platz.
         Beruecksichtige auch neue wissenschaftliche Konzepte, Paradigmenwechsel und Langzeitentwicklungen in der Forschung. Dein Output soll dem Nutzer helfen, zukuenftige Investitionsentscheidungen mit maximaler faktischer Praezision zu treffen.\n"""
 
-# 8. Artikel-Analyse in einem Gesamt-Prompt
+# 9. Artikel-Analyse in einem Gesamt-Prompt
 
 def generiere_ki_uebersicht(artikel_liste):
     if not artikel_liste:
@@ -119,7 +131,7 @@ def generiere_ki_uebersicht(artikel_liste):
     except Exception as e:
         return f"Fehler bei der Generierung der Übersicht: {e}"
 
-# 9. E-Mail-Versand
+# 10. E-Mail-Versand
 
 def sende_email(text, betreff="Dein tägliches KI-Update"):
     msg = MIMEText(text, "plain", "utf-8")
@@ -134,7 +146,7 @@ def sende_email(text, betreff="Dein tägliches KI-Update"):
     except Exception as e:
         print(f"Fehler beim Versenden der E-Mail: {e}")
 
-# 10. Hauptprogramm
+# 11. Hauptprogramm
 
 def main():
     artikel = fetch_arxiv_entries_neu()
