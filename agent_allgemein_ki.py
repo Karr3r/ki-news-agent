@@ -1,147 +1,156 @@
 import os
+import time
 import json
-import urllib.request
-import feedparser
-import smtplib
-from email.mime.text import MIMEText
 from datetime import datetime, timedelta, timezone
+from email.message import EmailMessage
+import smtplib
 from dotenv import load_dotenv
+import openai
+import feedparser
 
+# Umgebung laden
 load_dotenv()
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# Kategorien, die abgefragt werden sollen
-ARXIV_CATEGORIES = ["cs.AI", "cs.LG", "cs.CR", "cs.DC", "cs.DB", "cs.NI", "cs.CY", "stat.ML"]
+EMAIL_SENDER = os.getenv("EMAIL_SENDER")
+EMAIL_RECEIVER = os.getenv("EMAIL_RECEIVER")
+EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
+SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
+SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
 
-ARXIV_API_BASE = "http://export.arxiv.org/api/query?search_query=cat:{}&start=0&max_results=100"
+CATEGORIES = ["cs.AI", "cs.LG", "cs.CR", "cs.DC", "cs.DB", "cs.NI", "cs.CY", "stat.ML"]
+ARXIV_API_URL = "http://export.arxiv.org/api/query?search_query=cat:{}&start=0&max_results=100"
 
-PROCESSED_ARTICLES_FILE = "processed_articles.json"
+PROCESSED_FILE = os.path.join(os.path.dirname(__file__), "processed_articles.json")
 
-def get_zeitfenster_utc():
-    """Zeitfenster der letzten 7 Tage in UTC zurückgeben"""
-    jetzt = datetime.now(timezone.utc)
-    start = jetzt - timedelta(days=7)
-    return start, jetzt
+def debug(msg):
+    print(f"[DEBUG] {msg}")
 
-def load_processed_articles():
-    """Lade bereits verarbeitete Artikel-IDs aus JSON-Datei"""
-    if not os.path.exists(PROCESSED_ARTICLES_FILE):
-        return set()
-    with open(PROCESSED_ARTICLES_FILE, "r", encoding="utf-8") as f:
-        try:
-            data = json.load(f)
-            return set(data)
-        except Exception as e:
-            print(f"[DEBUG] Fehler beim Laden der verarbeiteten Artikel: {e}")
-            return set()
+def load_processed_ids():
+    if os.path.exists(PROCESSED_FILE):
+        with open(PROCESSED_FILE, "r") as f:
+            return set(json.load(f))
+    return set()
 
-def save_processed_articles(ids):
-    """Speichere verarbeitete Artikel-IDs in JSON-Datei"""
-    with open(PROCESSED_ARTICLES_FILE, "w", encoding="utf-8") as f:
-        json.dump(list(ids), f, indent=2)
+def save_processed_ids(ids):
+    with open(PROCESSED_FILE, "w") as f:
+        json.dump(list(ids), f)
 
-def fetch_arxiv_entries_neu():
-    start, ende = get_zeitfenster_utc()
-    processed_ids = load_processed_articles()
-    artikel_liste = []
-
-    headers = {'User-Agent': 'Mozilla/5.0 (compatible; KI-News-Agent/1.0; +https://github.com/Karr3r)'}
-
-    for cat in ARXIV_CATEGORIES:
-        url = ARXIV_API_BASE.format(cat)
-        print(f"[DEBUG] Lade API Feed: {url}")
-        try:
-            request = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(request) as response:
-                data = response.read()
-        except Exception as e:
-            print(f"[DEBUG] Fehler beim Abrufen des Feeds für {cat}: {e}")
-            continue
-
-        feed = feedparser.parse(data)
-        print(f"[DEBUG] {len(feed.entries)} Einträge im API Feed für Kategorie {cat}.")
-
-        # Debug: Zeige Datum der ersten drei Einträge
+def fetch_articles():
+    articles = []
+    for cat in CATEGORIES:
+        url = ARXIV_API_URL.format(cat)
+        debug(f"Lade API Feed: {url}")
+        feed = feedparser.parse(url)
+        debug(f"{len(feed.entries)} Einträge im API Feed für Kategorie {cat}.")
         for i, entry in enumerate(feed.entries[:3]):
-            print(f"[DEBUG] Beispiel-Eintrag {i+1}")
-            print(f"  ID: {entry.id}")
-            print(f"  Title: {entry.title}")
-            print(f"  published: {getattr(entry, 'published', 'nicht vorhanden')}")
-            print(f"  published_parsed: {getattr(entry, 'published_parsed', 'nicht vorhanden')}")
+            debug(f"Beispiel-Eintrag {i+1}")
+            debug(f"  ID: {entry.id}")
+            debug(f"  Title: {entry.title}")
+            debug(f"  published: {entry.published}")
+            debug(f"  published_parsed: {entry.published_parsed}")
+        articles.extend(feed.entries)
+    return articles
 
-        for entry in feed.entries:
-            if not hasattr(entry, "published_parsed"):
-                print(f"[DEBUG] Kein published_parsed bei Artikel {entry.get('title','(kein Titel)')}, übersprungen.")
-                continue
+def is_recent(published_parsed, days=7):
+    now = datetime.now(timezone.utc)
+    published = datetime(*published_parsed[:6], tzinfo=timezone.utc)
+    return now - timedelta(days=days) <= published <= now
 
-            publ_dt = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
-            if not (start <= publ_dt < ende):
-                continue
+def analyze_article(entry):
+    content = f"""
+arXiv-Titel: {entry.title}
+Zusammenfassung: {entry.summary}
+Publikationsdatum: {entry.published}
 
-            artikel_id = entry.id
-            if artikel_id in processed_ids:
-                continue
-
-            artikel_liste.append({
-                "id":       artikel_id,
-                "title":    entry.title.strip(),
-                "authors":  [a.name for a in entry.authors] if hasattr(entry, "authors") else [],
-                "abstract": entry.summary.replace("\n", " ").strip() if hasattr(entry, "summary") else "",
-                "link":     entry.link,
-                "published": publ_dt.isoformat()
-            })
-
-    print(f"[DEBUG] Insgesamt {len(artikel_liste)} neue Artikel im Zeitfenster gefunden.")
-    return artikel_liste
+Bitte analysiere diesen Artikel im Hinblick auf:
+1. Relevanz für langfristige Entwicklungen in Künstlicher Intelligenz (KI) und maschinellem Lernen (ML),
+2. mögliche Auswirkungen auf dezentrale Dateninfrastrukturen oder sicherheitsrelevante Systeme,
+3. ob dieser Artikel potenziell ein Signal für ein strategisches Technologie- oder Investmentthema ist.
+Gib eine evidenzbasierte Einschätzung ab. Antworte in maximal 8 Sätzen.
+"""
+    response = openai.chat.completions.create(
+        model="gpt-4",
+        messages=[
+            {"role": "system", "content": "Du bist ein Analyst für KI und Tech-Investments."},
+            {"role": "user", "content": content.strip()}
+        ],
+        temperature=0.4
+    )
+    return response.choices[0].message.content.strip()
 
 def send_email(subject, body):
-    """Sende eine einfache Text-E-Mail mit den angegebenen Betreff und Inhalt"""
-    email_address = os.getenv("EMAIL_ADDRESS")
-    email_password = os.getenv("EMAIL_APP_PASSWORD")
-    email_receiver = os.getenv("EMAIL_RECEIVER")
-
-    if not (email_address and email_password and email_receiver):
-        print("[DEBUG] E-Mail-Zugangsdaten oder Empfänger nicht gesetzt.")
-        return False
-
-    msg = MIMEText(body, "plain", "utf-8")
+    msg = EmailMessage()
+    msg["From"] = EMAIL_SENDER
+    msg["To"] = EMAIL_RECEIVER
     msg["Subject"] = subject
-    msg["From"] = email_address
-    msg["To"] = email_receiver
+    msg.set_content(body)
 
-    try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
-            smtp.login(email_address, email_password)
-            smtp.send_message(msg)
-        print("[DEBUG] E-Mail erfolgreich versendet.")
-        return True
-    except Exception as e:
-        print(f"[DEBUG] Fehler beim E-Mail-Versand: {e}")
-        return False
+    with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+        server.starttls()
+        server.login(EMAIL_SENDER, EMAIL_PASSWORD)
+        server.send_message(msg)
+        debug("E-Mail erfolgreich versendet.")
 
 def main():
-    print("[DEBUG] Starte Agent...")
-    start, ende = get_zeitfenster_utc()
-    print(f"[DEBUG] Zeitfenster UTC: {start.isoformat()} bis {ende.isoformat()}")
+    debug("Starte Agent...")
+    now = datetime.now(timezone.utc)
+    start_time = now - timedelta(days=7)
+    debug(f"Zeitfenster UTC: {start_time.isoformat()} bis {now.isoformat()}")
 
-    processed_ids = load_processed_articles()
-    print(f"[DEBUG] Geladene Artikel-IDs: {list(processed_ids)[:5]} ...")
+    processed_ids = load_processed_ids()
+    debug(f"Geladene Artikel-IDs: {list(processed_ids)[:5]} ...")
 
-    artikel = fetch_arxiv_entries_neu()
+    articles = fetch_articles()
 
-    if not artikel:
-        print("[DEBUG] Keine neuen Artikel gefunden.")
-        send_email("KI-News Agent: Keine neuen Artikel", "Im definierten Zeitfenster wurden keine neuen Artikel gefunden.")
+    new_articles = []
+    for entry in articles:
+        if entry.id in processed_ids:
+            continue
+        if not hasattr(entry, "published_parsed"):
+            continue
+        if is_recent(entry.published_parsed):
+            new_articles.append(entry)
+
+    debug(f"Insgesamt {len(new_articles)} neue Artikel im Zeitfenster gefunden.")
+
+    relevant_articles = []
+    debug_view = []
+    for entry in new_articles:
+        try:
+            summary = analyze_article(entry)
+            relevant_articles.append((entry, summary))
+        except Exception as e:
+            debug(f"Fehler bei Analyse: {e}")
+        debug_view.append(f"{entry.published[:10]} — {entry.title.strip()}")
+
+    if not relevant_articles:
+        debug("Keine neuen Artikel gefunden.")
+        email_body = (
+            "Täglicher arXiv-Agentenbericht (DEBUG-MODUS)\n\n"
+            "Keine relevanten neuen Artikel erkannt.\n\n"
+            "Letzte 7 Tage (Debug-Ansicht):\n"
+            + "\n".join(debug_view)
+        )
+        send_email("arXiv-Agent: Keine neuen Artikel", email_body)
         return
 
-    text = "Neue arXiv-Artikel der letzten 7 Tage:\n\n"
-    for art in artikel:
-        text += f"- {art['title']} ({art['published']})\n  {art['link']}\n\n"
+    # Nur wenn relevante Artikel erkannt wurden
+    email_body = "Täglicher arXiv-Agentenbericht\n\n"
+    for entry, summary in relevant_articles:
+        email_body += f"🧠 {entry.title.strip()}\n"
+        email_body += f"📅 {entry.published[:10]}\n"
+        email_body += f"🔗 {entry.id}\n"
+        email_body += f"📄 Analyse:\n{summary}\n\n"
 
-    neue_ids = {art['id'] for art in artikel}
-    alle_ids = processed_ids.union(neue_ids)
-    save_processed_articles(alle_ids)
+    email_body += "\nLetzte 7 Tage (Debug-Ansicht):\n"
+    email_body += "\n".join(debug_view)
 
-    send_email("KI-News Agent: Neue arXiv Artikel", text)
+    send_email("arXiv-Agent: Neue relevante Artikel", email_body)
+
+    # IDs merken
+    processed_ids.update(entry.id for entry in new_articles)
+    save_processed_ids(processed_ids)
 
 if __name__ == "__main__":
     main()
