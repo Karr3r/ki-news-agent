@@ -8,14 +8,9 @@ import urllib.request
 from dotenv import load_dotenv
 from openai import OpenAI
 
-load_dotenv()
-OPENAI_API_KEY     = os.getenv("OPENAI_API_KEY")
-EMAIL_ADDRESS      = os.getenv("EMAIL_ADDRESS")
-EMAIL_APP_PASSWORD = os.getenv("EMAIL_APP_PASSWORD")
-EMAIL_RECEIVER     = os.getenv("EMAIL_RECEIVER")
+# === Konfiguration ===
 
-client = OpenAI(api_key=OPENAI_API_KEY)
-
+# arXiv RSS-Feeds für KI-relevante Kategorien
 ARXIV_FEEDS = [
     "http://export.arxiv.org/rss/cs.AI",
     "http://export.arxiv.org/rss/cs.LG",
@@ -27,39 +22,42 @@ ARXIV_FEEDS = [
     "http://export.arxiv.org/rss/stat.ML",
 ]
 
+PROCESSED_JSON = "processed_articles.json"
+
+# Lade Umgebungsvariablen aus .env (API-Keys, E-Mail-Daten)
+load_dotenv()
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+EMAIL_ADDRESS = os.getenv("EMAIL_ADDRESS")
+EMAIL_APP_PASSWORD = os.getenv("EMAIL_APP_PASSWORD")
+EMAIL_RECEIVER = os.getenv("EMAIL_RECEIVER")
+
+client = OpenAI(api_key=OPENAI_API_KEY)
+
+# === Funktionen ===
+
 def get_zeitfenster_utc():
-    utc_plus_2 = timezone(timedelta(hours=2))
-    jetzt = datetime.now(utc_plus_2)
-    heute_730 = jetzt.replace(hour=7, minute=30, second=0, microsecond=0)
-    if jetzt < heute_730:
-        start = heute_730 - timedelta(days=7)  # 7 Tage zurück
-        ende  = heute_730
-    else:
-        start = heute_730 - timedelta(days=6)  # Start 6 Tage zurück (inkl. heute = 7 Tage)
-        ende  = heute_730 + timedelta(days=1)
-    print(f"[DEBUG] Zeitfenster UTC: {start.isoformat()} bis {ende.isoformat()}")
-    return start.astimezone(timezone.utc), ende.astimezone(timezone.utc)
+    # Berechnet das 7-Tage-Zeitfenster für Artikel (UTC)
+    now = datetime.now(timezone.utc)
+    start = now - timedelta(days=7)
+    print(f"[DEBUG] Zeitfenster UTC: {start.isoformat()} bis {now.isoformat()}")
+    return start, now
 
+def load_processed_articles():
+    if not os.path.exists(PROCESSED_JSON):
+        print("[DEBUG] Keine JSON-Datei mit verarbeiteten Artikeln gefunden.")
+        return set()
+    with open(PROCESSED_JSON, "r", encoding="utf-8") as f:
+        try:
+            data = json.load(f)
+            print(f"[DEBUG] Lade {len(data)} verarbeitete Artikel aus JSON.")
+            return set(data)
+        except json.JSONDecodeError:
+            print("[DEBUG] JSON-Datei ist leer oder fehlerhaft.")
+            return set()
 
-def load_processed_articles(filename="processed_articles.json"):
-    if os.path.exists(filename):
-        with open(filename, "r", encoding="utf-8") as f:
-            try:
-                data = json.load(f)
-                print(f"[DEBUG] Lade {len(data)} verarbeitete Artikel aus JSON.")
-                return data
-            except json.JSONDecodeError:
-                print("[DEBUG] JSON-Datei ist leer oder ungültig, starte mit leerer Liste.")
-                return []
-    else:
-        print("[DEBUG] JSON-Datei nicht gefunden, starte mit leerer Liste.")
-        return []
-
-def save_processed_articles(artikel_ids, filename="processed_articles.json"):
-    with open(filename, "w", encoding="utf-8") as f:
-        json.dump(artikel_ids, f, indent=2, ensure_ascii=False)
-    print(f"[DEBUG] {len(artikel_ids)} Artikel-IDs in JSON-Datei gespeichert.")
-
+def save_processed_articles(processed_ids):
+    with open(PROCESSED_JSON, "w", encoding="utf-8") as f:
+        json.dump(list(processed_ids), f, indent=2)
 
 def fetch_arxiv_entries_neu():
     start, ende = get_zeitfenster_utc()
@@ -73,52 +71,38 @@ def fetch_arxiv_entries_neu():
             data = response.read()
         feed = feedparser.parse(data)
         for entry in feed.entries:
-            # Debug: Alle Rohdaten der Einträge anzeigen
             print(f"[DEBUG] Gefundener Artikel: '{entry.title}', Published: {entry.published}")
-            print(f"[DEBUG] entry.published raw: {entry.published}")
-
-
             try:
                 publ_dt = datetime.strptime(entry.published, "%a, %d %b %Y %H:%M:%S %z")
-                publ_dt = publ_dt.astimezone(timezone.utc)
-            except Exception:
+            except Exception as e:
+                print(f"[DEBUG] Fehler bei Datum parsen: {e}, setze als UTC-naiv")
                 publ_dt = datetime.strptime(entry.published, "%a, %d %b %Y %H:%M:%S %Z")
                 publ_dt = publ_dt.replace(tzinfo=timezone.utc)
 
-
-
-
-
-            # Filter Zeitfenster
             if not (start <= publ_dt < ende):
                 print(f"[DEBUG] Artikel '{entry.title}' außerhalb Zeitfenster, ignoriert.")
                 continue
 
-            # ID für Duplikatcheck, z.B. Link (kann man anpassen)
             artikel_id = entry.link
             if artikel_id in processed_ids:
                 print(f"[DEBUG] Artikel '{entry.title}' bereits verarbeitet, übersprungen.")
                 continue
 
             artikel_liste.append({
-                "id":       artikel_id,
-                "title":    entry.title.strip(),
-                "authors":  [a.name.strip() for a in entry.authors] if hasattr(entry, "authors") else [],
+                "id": artikel_id,
+                "title": entry.title.strip(),
+                "authors": [a.name.strip() for a in entry.authors] if hasattr(entry, "authors") else [],
                 "abstract": entry.summary.replace("\n", " ").strip() if hasattr(entry, "summary") else "",
-                "link":     entry.link,
+                "link": entry.link,
                 "published": publ_dt.isoformat()
             })
 
     print(f"[DEBUG] Insgesamt {len(artikel_liste)} neue Artikel im Zeitfenster gefunden.")
     return artikel_liste
 
-
-PROMPT_TEMPLATE = """Du bist ein hochentwickelter und wissenschaftlicher Agent, der eigenstaendig das Internet und wissenschaftliche Datenbanken nach den neuesten empirischen Erkenntnissen durchsucht, um ein langfristiges (5 bis 10 Jahre) Investment- und Technologie-Monitoring im Bereich 'Kuenstliche Intelligenz' und 'Dezentrale Dateninfrastruktur' durchzufuehren. Dein Nutzer hat bereits 1000 Euro in eine Auswahl von Krypto-Token investiert, sowohl im Off-Chain Storage (FIL, STORJ, ASI/OCEAN, BTT, BZZ, SC) als auch im On-Chain Data Availability Layer (ETH, TIA, AVAIL, AR, NEAR), und moechte diese Positionen bei Bedarf evidenzbasiert anpassen.
-Du beginnst jede Analyse, indem du systematisch nach aktuellen und belastbaren Quellen suchst: peer-reviewte Studien, Konferenzbeitraege (NeurIPS, ICLR, IEEE, ACM, SOSP, SIGCOMM) und Preprints (z.B.arXiv). Besonders relevant sind quantitative Messdaten zu Netzwerk-Adoption, Storage-Volumen, Transaktionszahlen, Entwickler-Aktivitaet, Token-OEkonomie und regulatorischen Rahmenbedingungen.
-Ergaenzend wertest du Marktanalysen (z.B. Messari, L2BEAT, DePIN Scan), technische Roadmaps und wissenschaftlich relevante Whitepapers aus. Du integrierst auch neue Paradigmen der Forschung wie ZK-Rollups, modulare Blockchain-Architekturen, KI-optimierte Infrastruktur, Data-DAOs oder DePIN, sofern sie empirisch begruendet und potenziell disruptiv sind.
-Ziel deiner Arbeit ist eine kritische, evidenzbasierte Bewertung der technologischen und oekonomischen Relevanz dieser Projekte. Jede Einschaetzung wird ausschliesslich auf wissenschaftlicher Grundlage getroffen. Du bewertest Chancen und Risiken mit maximaler Sorgfalt. Spekulative Aussagen oder Marketingbehauptungen haben keinen Platz.
-Beruecksichtige auch neue wissenschaftliche Konzepte, Paradigmenwechsel und Langzeitentwicklungen in der Forschung. Dein Output soll dem Nutzer helfen, zukuenftige Investitionsentscheidungen mit maximaler faktischer Praezision zu treffen.\n"""
-
+PROMPT_TEMPLATE = """Bitte analysiere und fasse die folgenden wissenschaftlichen Artikel aus dem Bereich Künstliche Intelligenz zusammen.
+Die Zusammenfassung soll evidenzbasiert, informativ und relevant für langfristige Technologie-Investitionen sein.
+"""
 
 def generiere_ki_uebersicht(artikel_liste):
     if not artikel_liste:
@@ -143,32 +127,34 @@ def generiere_ki_uebersicht(artikel_liste):
     except Exception as e:
         return f"Fehler bei der Generierung der Übersicht: {e}"
 
-
-def sende_email(text, betreff="Dein tägliches KI-Update"):
+def send_mail(text):
     msg = MIMEText(text, "plain", "utf-8")
-    msg["Subject"] = betreff
-    msg["From"]    = EMAIL_ADDRESS
-    msg["To"]      = EMAIL_RECEIVER
+    msg["Subject"] = "Tägliche KI-News aus arXiv (letzte 7 Tage)"
+    msg["From"] = EMAIL_ADDRESS
+    msg["To"] = EMAIL_RECEIVER
+
     try:
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(EMAIL_ADDRESS, EMAIL_APP_PASSWORD)
             server.send_message(msg)
         print("[DEBUG] E-Mail erfolgreich versendet.")
     except Exception as e:
-        print(f"[DEBUG] Fehler beim Versenden der E-Mail: {e}")
-
+        print(f"[DEBUG] Fehler beim E-Mail Versand: {e}")
 
 def main():
     artikel = fetch_arxiv_entries_neu()
     if artikel:
-        # IDs speichern, um Duplikate in Zukunft zu vermeiden
+        # Verarbeitete Artikel-IDs laden & erweitern
         processed_ids = load_processed_articles()
-        neue_ids = [art["id"] for art in artikel]
-        combined_ids = list(set(processed_ids) | set(neue_ids))
-        save_processed_articles(combined_ids)
-    uebersicht = generiere_ki_uebersicht(artikel)
-    sende_email(uebersicht)
+        new_ids = {art["id"] for art in artikel}
+        processed_ids.update(new_ids)
+        save_processed_articles(processed_ids)
+    else:
+        print("[DEBUG] Keine neuen Artikel gefunden.")
 
+    mail_text = generiere_ki_uebersicht(artikel)
+    send_mail(mail_text)
 
 if __name__ == "__main__":
     main()
+
