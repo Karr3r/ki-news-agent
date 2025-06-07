@@ -43,17 +43,18 @@ def get_zeitfenster_utc():
     return start, now
 
 def load_processed_articles():
-    if not os.path.exists(PROCESSED_JSON):
-        print("[DEBUG] Keine JSON-Datei mit verarbeiteten Artikeln gefunden.")
+    if not os.path.exists("processed_articles.json"):
+        print("[DEBUG] Datei 'processed_articles.json' existiert nicht.")
         return set()
-    with open(PROCESSED_JSON, "r", encoding="utf-8") as f:
+    with open("processed_articles.json", "r", encoding="utf-8") as f:
         try:
             data = json.load(f)
-            print(f"[DEBUG] Lade {len(data)} verarbeitete Artikel aus JSON.")
+            print(f"[DEBUG] Geladene Artikel-IDs: {list(data)[:3]} ...")
             return set(data)
         except json.JSONDecodeError:
-            print("[DEBUG] JSON-Datei ist leer oder fehlerhaft.")
+            print("[DEBUG] JSON konnte nicht geladen werden.")
             return set()
+
 
 def save_processed_articles(processed_ids):
     with open(PROCESSED_JSON, "w", encoding="utf-8") as f:
@@ -65,7 +66,7 @@ def fetch_arxiv_entries_neu():
     artikel_liste = []
 
     headers = {
-        'User-Agent': 'Mozilla/5.0 (compatible; KI-News-Agent/1.0; +https://github.com/Karr3r)'
+    'User-Agent': 'Mozilla/5.0 (compatible; KI-News-Agent/1.0; +https://github.com/Karr3r)'
     }
 
     for feed_url in ARXIV_FEEDS:
@@ -74,6 +75,9 @@ def fetch_arxiv_entries_neu():
         with urllib.request.urlopen(request) as response:
             data = response.read()
         feed = feedparser.parse(data)
+        print(f"[DEBUG] {len(feed.entries)} Einträge im Feed.")
+        for i, entry in enumerate(feed.entries[:5]):  # Nur die ersten 5 zum Überblick
+            print(f"[DEBUG] #{i+1}: Titel: {entry.title}, Published: {getattr(entry, 'published', 'kein published')}")
 
         for entry in feed.entries:
             print(f"[DEBUG] Gefundener Artikel: '{entry.title}'")
@@ -90,11 +94,16 @@ def fetch_arxiv_entries_neu():
                 else:
                     publ_dt = datetime.strptime(entry.published, "%a, %d %b %Y %H:%M:%S %z")
                     publ_dt = publ_dt.astimezone(timezone.utc)
+                    print(f"[DEBUG] Raw: {entry.published}")
+                    print(f"[DEBUG] Parsed UTC: {publ_dt.isoformat()}")
             except Exception as e:
                 print(f"[DEBUG] Fehler beim Parsen von Datum: {e}")
                 continue
 
             print(f"[DEBUG] Artikel Datum als datetime (UTC): {publ_dt.isoformat()}")
+            print(f"[DEBUG] Zeitfenster Start: {start.isoformat()}")
+            print(f"[DEBUG] Zeitfenster Ende : {ende.isoformat()}")
+            print(f"[DEBUG] Liegt im Zeitfenster? {start <= publ_dt < ende}")
 
             if not (start <= publ_dt < ende):
                 print(f"[DEBUG] Artikel '{entry.title}' außerhalb Zeitfenster, ignoriert.")
@@ -116,6 +125,8 @@ def fetch_arxiv_entries_neu():
 
     print(f"[DEBUG] Insgesamt {len(artikel_liste)} neue Artikel im Zeitfenster gefunden.")
     return artikel_liste
+
+
 
 
 
