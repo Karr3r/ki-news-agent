@@ -1,150 +1,148 @@
-import feedparser
-import openai
-import json
 import os
+import json
 import smtplib
 import time
 from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
-from itertools import islice
-import re
+from openai import OpenAI, OpenAIError
+from openai.types.chat import ChatCompletionMessageParam
 
+# .env laden
 load_dotenv()
 
-# OpenAI
-openai.api_key = os.getenv("OPENAI_API_KEY")
-
-# Email
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 EMAIL_ADDRESS = os.getenv("EMAIL_ADDRESS")
 EMAIL_PASSWORD = os.getenv("EMAIL_APP_PASSWORD")
 EMAIL_RECEIVER = os.getenv("EMAIL_RECEIVER")
 
-# Kategorien
-CATEGORIES = [
-    "cs.AI", "cs.LG", "cs.CR", "cs.DC",
-    "cs.DB", "cs.NI", "cs.CY", "stat.ML"
+client = OpenAI(api_key=OPENAI_API_KEY)
+
+PROCESSED_FILE = "processed_articles.json"
+DAYS_BACK = 3
+MAX_TOKENS = 4096
+
+ARXIV_CATEGORIES = [
+    "cs.AI", "cs.LG", "cs.CR", "cs.DC", "cs.DB", "cs.NI", "cs.CY", "stat.ML"
 ]
 
-DAYS_BACK = 3
-BATCH_SIZE = 5
+# Lade bereits verarbeitete IDs
+def load_processed_ids():
+    if not os.path.exists(PROCESSED_FILE):
+        return set()
+    with open(PROCESSED_FILE, "r") as f:
+        return set(json.load(f))
 
-BASE_URL = "http://export.arxiv.org/rss/"
-
-processed_ids_path = os.path.join(os.path.dirname(__file__), "processed_articles.json")
-if os.path.exists(processed_ids_path):
-    with open(processed_ids_path, "r") as f:
-        processed_ids = set(json.load(f))
-else:
-    processed_ids = set()
-
-def save_processed_ids():
-    with open(processed_ids_path, "w") as f:
+def save_processed_ids(processed_ids):
+    with open(PROCESSED_FILE, "w") as f:
         json.dump(list(processed_ids), f)
 
-def fetch_articles():
+# Artikel aus arXiv API laden
+def fetch_arxiv_articles():
+    import feedparser
+    base_url = "http://export.arxiv.org/api/query?"
+    search_query = "cat:" + " OR cat:".join(ARXIV_CATEGORIES)
+    start_date = (datetime.utcnow() - timedelta(days=DAYS_BACK)).strftime("%Y%m%d%H%M%S")
+    url = f"{base_url}search_query={search_query}&sortBy=submittedDate&sortOrder=descending&start=0&max_results=200"
+    feed = feedparser.parse(url)
     articles = []
-    for cat in CATEGORIES:
-        d = feedparser.parse(BASE_URL + cat)
-        for entry in d.entries:
-            published = datetime(*entry.published_parsed[:6])
-            if datetime.now() - published < timedelta(days=DAYS_BACK):
-                if entry.id not in processed_ids:
-                    articles.append({
-                        "id": entry.id,
-                        "title": entry.title,
-                        "summary": entry.summary,
-                        "link": entry.link
-                    })
+    for entry in feed.entries:
+        published = datetime.strptime(entry.published, "%Y-%m-%dT%H:%M:%SZ")
+        if published < datetime.utcnow() - timedelta(days=DAYS_BACK):
+            continue
+        article_id = entry.id.split("/")[-1]
+        summary = entry.summary.replace("\n", " ").strip()
+        articles.append({
+            "id": article_id,
+            "title": entry.title.strip(),
+            "summary": summary,
+            "link": entry.link,
+            "published": published.strftime("%Y-%m-%d")
+        })
     return articles
 
-def chunked(iterable, size):
-    it = iter(iterable)
-    return iter(lambda: list(islice(it, size)), [])
+# GPT Analyse
+def analyze_articles_with_gpt(batches):
+    analyses = []
+    debug_infos = []
+    for i, batch in enumerate(batches):
+        print(f"Analysiere Batch {i+1}/{len(batches)}")
+        try:
+            prompt = build_prompt(batch)
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "system", "content": prompt}],
+                temperature=0.3
+            )
+            raw = response.choices[0].message.content.strip()
+            try:
+                result = json.loads(raw)
+                if isinstance(result, list):
+                    analyses.extend(result)
+                    debug_infos.append(f"Batch {i+1}: OK ({len(batch)} Artikel)")
+                else:
+                    debug_infos.append(f"⚠️ Fehlerhafte Struktur in Batch {i+1}")
+            except json.JSONDecodeError as e:
+                debug_infos.append(f"❌ JSON-Fehler bei GPT-Antwort: {e}\nGPT-Rohantwort war:\n{raw}")
+        except OpenAIError as e:
+            debug_infos.append(f"❌ Fehler bei GPT-Analyse Batch {i+1}: {str(e)}")
+    return analyses, debug_infos
 
-def clean_json_string(json_str):
-    json_str = re.sub(r",\s*(\}|\])", r"\\1", json_str)
-    json_str = json_str.replace("$\\ell_2$", "l2").replace("ℓ₂", "l2")
-    json_str = json_str.replace("\\", "\\\\")
-    return json_str
-
-def analyse_articles_batch(batch):
-    system_prompt = """
-    Du bist ein wissenschaftlicher KI-Analyst. Für jeden Paper-Titel + Abstract gib eine Analyse im JSON-Format zurück:
-    [
-        {
-            "kurztitel": "kurzer Titel oder Akronym",
-            "relevant": true/false,
-            "kurzfazit": "Ein prägnantes Fazit, warum das Paper relevant oder nicht relevant ist."
-        },
-        ...
-    ]
-    """
-
-    user_input = "\n".join(
-        [f"Titel: {a['title']}\nAbstract: {a['summary']}" for a in batch]
+def build_prompt(articles):
+    joined = "\n\n".join(
+        f"Titel: {a['title']}\nZusammenfassung: {a['summary']}" for a in articles
+    )
+    return (
+        "Du bist ein Analyst für KI-Investments. Analysiere die folgenden arXiv-Paper aus den letzten Tagen "
+        "und gib mir für jedes Paper ein JSON-Element mit folgendem Format zurück:\n\n"
+        "[\n"
+        "  {\n"
+        '    "kurztitel": "Kurzer Titel",\n'
+        '    "relevant": true/false,\n'
+        '    "kurzfazit": "Ein kurzer, prägnanter Satz zur Relevanz bzw. warum nicht relevant."\n'
+        "  },\n"
+        "...]\n\n"
+        "Hier sind die Paper:\n\n" + joined
     )
 
-    try:
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_input}
-            ]
-        )
-        content = response.choices[0].message.content.strip()
-        cleaned = clean_json_string(content)
-        try:
-            result = json.loads(cleaned)
-            return result
-        except json.JSONDecodeError as je:
-            print("❌ JSON-Fehler nach Cleanup:", je)
-            print("Bereinigte GPT-Rohantwort:\n", cleaned)
-            return []
-    except Exception as e:
-        print("Fehler bei GPT-Analyse:", e)
-        return []
-
+# Email versenden
 def send_email(analyses, debug_infos):
-    body = "\n\n".join([
-        f"{a['kurztitel']}\nRelevant: {a['relevant']}\n{a['kurzfazit']}"
-        for a in analyses
-    ])
-    debug_text = "\n\n--- DEBUG INFOS ---\n\n" + "\n\n".join(debug_infos)
-
-    msg = MIMEText(body + debug_text)
-    msg["Subject"] = f"KI-Analyse Report – {datetime.now().strftime('%Y-%m-%d')}"
+    msg = MIMEMultipart()
     msg["From"] = EMAIL_ADDRESS
     msg["To"] = EMAIL_RECEIVER
+    msg["Subject"] = "KI-Analyse Report"
 
+    relevant = [a for a in analyses if a.get("relevant")]
+    body = "Relevante Artikel:\n\n"
+    for a in relevant:
+        body += f"- {a['kurztitel']}: {a['kurzfazit']}\n"
+    body += "\n\n--- DEBUG ---\n" + "\n".join(debug_infos)
+
+    msg.attach(MIMEText(body, "plain"))
     try:
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
             server.send_message(msg)
-            print("✅ E-Mail gesendet")
     except Exception as e:
-        print("❌ Fehler beim Senden der E-Mail:", e)
+        print(f"❌ Fehler beim Senden der E-Mail: {e}")
 
+# Aufteilen in Batches
+def chunk_articles(articles, size=5):
+    return [articles[i:i + size] for i in range(0, len(articles), size)]
+
+# Hauptlogik
 if __name__ == "__main__":
-    all_articles = fetch_articles()
-    print(f"Gefundene neue Artikel: {len(all_articles)}")
+    all_articles = fetch_arxiv_articles()
+    processed_ids = load_processed_ids()
+    new_articles = [a for a in all_articles if a["id"] not in processed_ids]
 
-    relevant_analyses = []
-    debug_infos = []
-
-    for i, batch in enumerate(chunked(all_articles, BATCH_SIZE)):
-        print(f"Analysiere Batch {i+1}/{(len(all_articles) // BATCH_SIZE) + 1}")
-        analysis = analyse_articles_batch(batch)
-        if not analysis:
-            debug_infos.append(f"⚠️ Leere Analyse bei Batch {i+1}")
-        else:
-            for result in analysis:
-                if result.get("relevant"):
-                    relevant_analyses.append(result)
-        time.sleep(1.5)
-
-    processed_ids.update([a["id"] for a in all_articles])
-    save_processed_ids()
-
-    send_email(relevant_analyses, debug_infos)
+    if not new_articles:
+        print("Keine neuen Artikel gefunden.")
+        send_email([], ["Keine neuen Artikel in den letzten Tagen."])
+    else:
+        batches = chunk_articles(new_articles, size=5)
+        gpt_analyses, debug_infos = analyze_articles_with_gpt(batches)
+        processed_ids.update([a["id"] for a in new_articles])
+        save_processed_ids(processed_ids)
+        send_email(gpt_analyses, debug_infos)
