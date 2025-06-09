@@ -12,10 +12,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Download letztes processed_articles.json
+      # 1) Versuche, das alte processed_articles.json zu laden (ignoriert Fehler)
       - name: Download processed_articles.json
-        if: always()
         uses: actions/download-artifact@v4
+        continue-on-error: true
         with:
           name: processed-articles
           path: .
@@ -33,10 +33,11 @@ jobs:
       - name: Run Agent
         run: python agent_allgemein_ki.py
 
-      # Upload aktuelles processed_articles.json
+      # 2) Lade das neue processed_articles.json hoch
       - name: Upload processed_articles.json
         uses: actions/upload-artifact@v4
         with:
           name: processed-articles
           path: processed_articles.json
+
 
