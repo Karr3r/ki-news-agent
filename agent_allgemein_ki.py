@@ -29,8 +29,13 @@ def save_processed_articles():
 
 def get_cutoff_datetime():
     now_utc = datetime.now(timezone.utc)
-    # 3 Tage zurück
-    return now_utc - timedelta(days=3)
+    utc_plus_2 = timezone(timedelta(hours=2))
+    now_local = now_utc.astimezone(utc_plus_2)
+    cutoff_local = now_local.replace(hour=7, minute=30, second=0, microsecond=0)
+    if now_local < cutoff_local:
+        cutoff_local -= timedelta(days=1)
+    # erweitere auf 3 Tage rückwirkend ab Cutoff
+    return (cutoff_local - timedelta(days=2)).astimezone(timezone.utc)
 
 def fetch_articles():
     articles = []
@@ -59,32 +64,46 @@ def analyse_articles_batch(articles):
         "Artikel eine kurze Einschätzung in JSON zurück, mit diesen Feldern:\n"
         "- kurztitel (kurzer Titel)\n"
         "- relevant (true/false, ob relevant für KI-Newsletter)\n"
-        "- kurzfazit (max 1 Satz)\n\n"
-        "Artikel:\n"
+        "- kurzfazit (max 1 Satz)\n\nArtikel:\n"
     )
-
     for i, art in enumerate(articles, start=1):
         prompt_intro += f"{i}. Titel: {art['title']}\n   Zusammenfassung: {art['summary']}\n"
-
-    prompt_intro += (
-        "\nGib die Antwort als JSON-Liste zurück, z.B. "
-        "[{\"kurztitel\":..., \"relevant\":..., \"kurzfazit\":...}, ...]"
-    )
+    prompt_intro += "\nGib die Antwort als JSON-Liste zurück."
 
     try:
         response = openai.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt_intro}],
             temperature=0.2,
-            max_tokens=1500,
+            max_tokens=1500
         )
         content = response.choices[0].message.content
-        return json.loads(content)
+        try:
+            analyses = json.loads(content)
+            return analyses
+        except json.JSONDecodeError as je:
+            print("❌ JSON-Fehler bei GPT-Antwort:", je)
+            print("GPT-Rohantwort war:\n", content)
+            return []
     except Exception as e:
         print("Fehler bei GPT-Analyse:", e)
         return []
 
+def analyse_all_in_batches(all_articles, batch_size=5):
+    all_analyses = []
+    for i in range(0, len(all_articles), batch_size):
+        batch = all_articles[i:i+batch_size]
+        result = analyse_articles_batch(batch)
+        if not result:
+            print(f"⚠️ Leere Analyse bei Batch {i//batch_size + 1}")
+        all_analyses.extend(result)
+    return all_analyses
+
 def send_email(relevant_analyses, debug_infos):
+    if not debug_infos:
+        print("⚠️ Kein Inhalt für Debug-Infos vorhanden → Mail wird nicht gesendet.")
+        return
+
     msg = MIMEMultipart("alternative")
     msg["Subject"] = "Täglicher KI arXiv Report"
     msg["From"] = EMAIL_ADDRESS
@@ -100,9 +119,9 @@ def send_email(relevant_analyses, debug_infos):
     else:
         html += "<p>Keine relevanten Artikel.</p>"
 
-    html += "<h2>🛠 Debug-Ansicht (alle analysierten Artikel)</h2>"
+    html += "<h2>🛠 Debug-Ansicht (alle Artikel der letzten 3 Tage ab 7:30)</h2>"
     for debug in debug_infos:
-        art = debug["article"]
+        art = debug['article']
         html += f"<h4>{art['title']}</h4>"
         html += f"<p><a href='{art['link']}'>{art['link']}</a></p>"
         html += f"<pre>{json.dumps(debug['analysis'], indent=2, ensure_ascii=False)}</pre><hr>"
@@ -110,31 +129,37 @@ def send_email(relevant_analyses, debug_infos):
     html += "</body></html>"
     msg.attach(MIMEText(html, "html"))
 
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-        server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
-        server.send_message(msg)
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+            server.send_message(msg)
+            print("✅ E-Mail erfolgreich gesendet.")
+    except smtplib.SMTPAuthenticationError as e:
+        print("❌ SMTP-Authentifizierungsfehler:", e)
+    except Exception as e:
+        print("❌ Fehler beim Senden der E-Mail:", e)
 
 # === Hauptlogik ===
 articles = fetch_articles()
 
 if not articles:
-    print("Keine neuen Artikel gefunden.")
+    print("ℹ️ Keine neuen Artikel gefunden.")
     exit(0)
+
+analyses = analyse_all_in_batches(articles)
 
 relevant_analyses = []
 debug_infos = []
 
-# Analyse in Batches à 5
-BATCH_SIZE = 5
-for i in range(0, len(articles), BATCH_SIZE):
-    batch = articles[i:i + BATCH_SIZE]
-    analyses = analyse_articles_batch(batch)
+if not analyses:
+    print("⚠️ GPT konnte keine Analysen liefern. Kein Versand.")
+    exit(1)
 
-    for article, analysis in zip(batch, analyses):
-        debug_infos.append({"article": article, "analysis": analysis})
-        processed_articles[article["id"]] = article["published"]
-        if analysis.get("relevant", False):
-            relevant_analyses.append(analysis)
+for article, analysis in zip(articles, analyses):
+    debug_infos.append({"article": article, "analysis": analysis})
+    processed_articles[article["id"]] = article["published"]
+    if analysis.get("relevant", False):
+        relevant_analyses.append(analysis)
 
 save_processed_articles()
 send_email(relevant_analyses, debug_infos)
