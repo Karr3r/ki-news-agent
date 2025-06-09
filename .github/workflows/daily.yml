@@ -9,10 +9,18 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    steps:
-      - uses: actions/checkout@v4
+    # Secrets als Umgebungsvariablen verfügbar machen
+    env:
+      OPENAI_API_KEY:     ${{ secrets.OPENAI_API_KEY }}
+      EMAIL_ADDRESS:      ${{ secrets.EMAIL_ADDRESS }}
+      EMAIL_APP_PASSWORD: ${{ secrets.EMAIL_APP_PASSWORD }}
+      EMAIL_RECEIVER:     ${{ secrets.EMAIL_RECEIVER }}
 
-      # 1) Versuche, das alte processed_articles.json zu laden (ignoriert Fehler)
+    steps:
+      - name: Code auschecken
+        uses: actions/checkout@v4
+
+      # Vorheriges processed_articles.json herunterladen (falls vorhanden)
       - name: Download processed_articles.json
         uses: actions/download-artifact@v4
         continue-on-error: true
@@ -20,24 +28,23 @@ jobs:
           name: processed-articles
           path: .
 
-      - name: Setup Python
+      - name: Python-Umgebung einrichten
         uses: actions/setup-python@v4
         with:
           python-version: '3.x'
 
-      - name: Install Dependencies
+      - name: Abhängigkeiten installieren
         run: |
           python -m pip install --upgrade pip
           pip install feedparser openai python-dotenv
 
-      - name: Run Agent
+      - name: Agent ausführen
         run: python agent_allgemein_ki.py
 
-      # 2) Lade das neue processed_articles.json hoch
+      # Aktuelles processed_articles.json hochladen
       - name: Upload processed_articles.json
         uses: actions/upload-artifact@v4
         with:
           name: processed-articles
           path: processed_articles.json
-
 
