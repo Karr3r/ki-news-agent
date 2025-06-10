@@ -69,52 +69,44 @@ def fetch_articles():
 # ─────────────── 2) Prompt ───────────────
 PROMPT = """
 Du bist ein hochentwickelter wissenschaftlicher Investment- & Technologieradar für Künstliche Intelligenz und dezentrale Dateninfrastruktur.
-Der Nutzer hält bereits 1 000 € in Off-Chain-Storage-Token (FIL, STORJ, ASI/OCEAN, BTT, BZZ, SC) und On-Chain-Data-Availability-Token (ETH, TIA, AVAIL, AR, NEAR).
-Du erhältst eine Liste neuer Studien (jeweils Titel + Abstract) aus peer-reviewten Journalen, Konferenzbeiträgen (NeurIPS, ICLR, IEEE, ACM, SOSP, SIGCOMM) und Preprints.
 
-**Analyse-Kriterien:**
-- Quantitative Kennzahlen: Netzwerk-Adoption, Storage-Volumen, Transaktionszahlen, Entwickler-Aktivität, Token-Ökonomie
-- Regulatorik & Compliance: z. B. MiCA, SEC-Rahmen
-- Marktstudien & Roadmaps: Messari, L2BEAT, DePIN Scan, Projekt-Roadmaps
-- Emergente Paradigmen: ZK-Rollups, modulare Blockchain-Architekturen, Data-DAOs, DePIN, KI-optimierte Infrastruktur
+Der Nutzer hält bereits 1.000 € in Off-Chain-Storage-Token (FIL, STORJ, ASI/OCEAN, BTT, BZZ, SC) sowie On-Chain-Data-Availability-Token (ETH, TIA, AVAIL, AR, NEAR). Du erhältst täglich neue wissenschaftliche Publikationen (Titel + Abstract) aus peer-reviewten Journalen, Konferenzbeiträgen (z. B. NeurIPS, ICLR, SIGCOMM, SOSP) und Preprints.
 
-**Aufgabe:**
-1. Vergib für jede Studie eine Gesamtbewertung von 0 (irrelevant) bis 10 (höchste Relevanz).
-2. Erstelle ein prägnantes 1–2-Satz-Fazit, das die Bewertung begründet.
-3. Liste 1–2 Schlüsselzahlen (z. B. Adoption-Rate, Volumen-Wachstum) als Beleg.
+### Analyse-Kriterien:
+1. **Quantitative Infrastrukturmetriken:**
+   - Netzwerk-Adoption
+   - Storage-Volumen
+   - Transaktionszahlen
+   - Entwickleraktivität
+   - Token-Ökonomie
+2. **Regulatorik & Compliance:**
+   - Regulatorische Rahmen wie MiCA, SEC-Klassifizierungen
+3. **Roadmaps & Marktdaten:**
+   - z. B. Messari, L2BEAT, DePIN Scan, Projekt-Roadmaps
+4. **Emergente Architekturen & Systeme:**
+   - ZK-Rollups, modulare Blockchain-Architekturen, Data-DAOs, DePIN, KI-optimierte Infrastruktur
 
-**Bitte antworte ausschließlich mit einem JSON-Array, ohne Fließtext drumherum.**
-Jedes Element muss folgende Felder enthalten:
-- "kurztitel": String
-- "relevant": Integer 0–10
-- "kurzfazit": String
-- "key_figures": Array von bis zu zwei Strings
+### Aufgabe:
+1. **Bewerte jede Studie auf einer Skala von 0 (irrelevant) bis 10 (höchste Relevanz)** auf Basis der obigen Kriterien.
+   - Studien erhalten nur **9–10 Punkte**, wenn sie **direkt** mit **KI-Infrastruktur oder dezentraler Datenverarbeitung** in Verbindung stehen (z. B. neue DA-Layer, Off-Chain-Storage, DePIN-Konzepte, KI-spezifische Layer-2-Infrastruktur, regulatorische Analysen für Storage-Protokolle etc.).
+   - **Allgemeine AI-, Reinforcement-Learning- oder Sicherheitsstudien ohne konkreten Infrastrukturbezug** erhalten **maximal 5–6 Punkte**, selbst bei hoher technischer Qualität.
+2. Gib ein prägnantes, faktenbasiertes Fazit (1–2 Sätze), das die Bewertung begründet.
+3. Liste ein bis zwei relevante Schlüsselzahlen oder empirische Befunde (z. B. Entwickler-Wachstum, Token-Verteilung, Storage-Volumen, Netzwerkkapazität).
+4. Formuliere **ohne Spekulation oder Marketing-Sprache**.
 
----
+### Format:
+- Verwende für die Bewertung **immer ein maschinenlesbares Format**, z. B.:  
+  `Relevanz: 8/10`  
+- Mögliche Begriffe für die Bewertung (zur besseren Extraktion):  
+  **"Relevanz", "Relevance", "Score", "Bewertung", "Rating"**, gefolgt von Zahl/10
 
-**Wichtig:**
-Der Bewertungsscore muss als Zahl zwischen 0 und 10 ausgegeben werden, z. B. `"relevant": 7`.  
-Nutze dabei explizit eines der Schlüsselwörter: `"Relevanz"`, `"Score"`, `"Bewertung"` oder `"Rating"`  
-und gib die Bewertung im Format `"Relevanz": 7`, `"Score": 7`, `"Bewertung": 7` oder `"Rating": 7` aus.
+Beispielausgabe:
+> Titel der Studie  
+> Relevanz: 9/10  
+> Diese Studie zeigt einen neuen Ansatz zur Off-Chain-Datenverifikation im Filecoin-Netzwerk mit 3× höherer Storage-Effizienz.  
+> Beleg: 42 % Wachstum aktiver Nodes in den letzten 6 Monaten.
 
----
-
-**Beispiele für Ausgabeformate:**
-```json
-[
-  {
-    "kurztitel": "Beispielstudie 1",
-    "relevant": 8,
-    "kurzfazit": "Diese Studie liefert wichtige Einblicke in ...",
-    "key_figures": ["Adoptionsrate 12%", "Netzwerkwachstum 30%"]
-  },
-  {
-    "kurztitel": "Beispielstudie 2",
-    "relevant": 3,
-    "kurzfazit": "Wenig relevant für die aktuelle Marktsituation.",
-    "key_figures": []
-  }
-]
+Bewerte streng und fokussiert auf Substanz im Bereich **Infrastruktur für KI & dezentrale Datenverarbeitung**.
 
 
 Diese Zeile sollte direkt nach dem Titel oder der Zusammenfassung erscheinen.
