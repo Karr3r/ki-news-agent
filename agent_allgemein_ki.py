@@ -70,7 +70,7 @@ def fetch_articles():
 PROMPT = """
 Du bist ein hochentwickelter wissenschaftlicher Investment- & Technologieradar für Künstliche Intelligenz und dezentrale Dateninfrastruktur.
 Der Nutzer hält bereits 1 000 € in Off-Chain-Storage-Token (FIL, STORJ, ASI/OCEAN, BTT, BZZ, SC) und On-Chain-Data-Availability-Token (ETH, TIA, AVAIL, AR, NEAR).
-Du erhältst eine Liste neuer Studien (jeweils Titel + Abstract) aus peer-reviewten Journalen, Konferenzbeiträgen (NeurIPS, ICLR, IEEE, ACM, SOSP, SIGCOMM) und Preprints (arXiv).
+Du erhältst eine Liste neuer Studien (jeweils Titel + Abstract) aus peer-reviewten Journalen, Konferenzbeiträgen (NeurIPS, ICLR, IEEE, ACM, SOSP, SIGCOMM) und Preprints.
 
 **Analyse-Kriterien:**
 - Quantitative Kennzahlen: Netzwerk-Adoption, Storage-Volumen, Transaktionszahlen, Entwickler-Aktivität, Token-Ökonomie
@@ -83,14 +83,44 @@ Du erhältst eine Liste neuer Studien (jeweils Titel + Abstract) aus peer-review
 2. Erstelle ein prägnantes 1–2-Satz-Fazit, das die Bewertung begründet.
 3. Liste 1–2 Schlüsselzahlen (z. B. Adoption-Rate, Volumen-Wachstum) als Beleg.
 
+Bitte bewerte die Relevanz des Artikels zusätzlich auf einer Skala von 0 bis 10 – ganzzahlig.
+
+Verwende dabei folgende Relevanzskala:
+
+- 10/10: bahnbrechende Forschungsarbeit mit klarer praktischer Anwendung oder strategischem Impact im Bereich KI, Datenschutz oder dezentraler Dateninfrastruktur.  
+- 8–9: sehr relevante Methode oder Architektur mit hoher Innovationsdichte oder unmittelbarem Potenzial für Einsatz in produktiven Systemen.  
+- 5–7: interessante oder solide Arbeit, theoretisch fundiert, aber ohne klaren Durchbruch oder ohne direkten Praxisbezug.  
+- 1–4: begrenzt relevant für den Kontext, z. B. sehr spezifisch, inkrementell, oder mit wenig Transferpotenzial.  
+- 0: thematisch völlig außerhalb des Fokus.
+
+Berücksichtige insbesondere, ob der Beitrag…
+
+- neue Verfahren, Modelle oder Benchmarks für KI oder Machine Learning vorstellt,  
+- robuste oder sichere KI-Methoden behandelt,  
+- dezentrale Infrastrukturen oder verteiltes Lernen adressiert (z. B. FL, Edge ML, Blockchain-KI),  
+- oder Datenschutz, Interpretierbarkeit, Fairness, Effizienz oder Nachhaltigkeit in ML fokussiert.
+
+Achte auf Schlüsselwörter wie z. B.:  
+robustness, scalability, privacy, federated, quantum, energy efficiency, real-world deployment, benchmark, LLM, GNN, attack, mitigation, secure, interpretable, self-supervised, multi-agent, graph, foundation model, infrastructure, distributed, on-device, low-resource, open-source.
+
+Formatvorgabe:  
+Gib den Relevanz-Score **am Anfang der Ausgabezeile** im folgenden Format an:
+
+Relevanz: <Zahl>/10
+
+Beispiel:  
+Relevanz: 8/10
+
+Diese Zeile sollte direkt nach dem Titel oder der Zusammenfassung erscheinen.
+
 Antworte ausschließlich mit einem JSON-Array, ohne Fließtext drumherum.
 Jedes Element muss folgende Felder enthalten:
 - "kurztitel": String
 - "relevant": Integer 0–10
 - "kurzfazit": String
 - "key_figures": Array von bis zu zwei Strings
-
 """
+
 
 def build_prompt(batch):
     text = []
