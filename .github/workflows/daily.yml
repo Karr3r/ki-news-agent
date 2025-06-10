@@ -1,49 +1,41 @@
-name: Tägliches KI-Update
+name: KI News Agent
 
 on:
   schedule:
-    - cron: '30 5 * * *'   # 07:30 MESZ
-  workflow_dispatch: {}
+    - cron: "30 5 * * *"  # Täglich um 7:30 Uhr MESZ (UTC+2)
+  workflow_dispatch:
 
 jobs:
-  build:
+  run-agent:
     runs-on: ubuntu-latest
 
-    # Secrets als Umgebungsvariablen verfügbar machen
-    env:
-      OPENAI_API_KEY:     ${{ secrets.OPENAI_API_KEY }}
-      EMAIL_ADDRESS:      ${{ secrets.EMAIL_ADDRESS }}
-      EMAIL_APP_PASSWORD: ${{ secrets.EMAIL_APP_PASSWORD }}
-      EMAIL_RECEIVER:     ${{ secrets.EMAIL_RECEIVER }}
-
     steps:
-      - name: Code auschecken
-        uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v3
 
-      # Vorheriges processed_articles.json herunterladen (falls vorhanden)
-      - name: Download processed_articles.json
-        uses: actions/download-artifact@v4
-        continue-on-error: true
+      - name: Download previous processed_articles.json (if exists)
+        uses: actions/download-artifact@v3
         with:
           name: processed-articles
-          path: .
+          path: ./Data
+        continue-on-error: true  # wichtig, damit der erste Run funktioniert
 
-      - name: Python-Umgebung einrichten
+      - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.x'
+          python-version: "3.10"
 
-      - name: Abhängigkeiten installieren
+      - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install feedparser openai python-dotenv
+          pip install -r requirements.txt
 
-      - name: Agent ausführen
-        run: python agent_allgemein_ki.py
+      - name: Run KI News Agent
+        run: |
+          python agent_allgemein_ki.py ./Data/processed_articles.json ./Data/processed_articles.json
 
-      # Aktuelles processed_articles.json hochladen
-      - name: Upload processed_articles.json
-        uses: actions/upload-artifact@v4
+      - name: Upload processed_articles.json for future runs
+        uses: actions/upload-artifact@v3
         with:
           name: processed-articles
-          path: processed_articles.json
+          path: ./Data/processed_articles.json
+

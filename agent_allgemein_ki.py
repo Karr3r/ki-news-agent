@@ -3,8 +3,8 @@
 
 import os
 import json
+import sys
 import feedparser
-import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from datetime import datetime, timedelta, UTC, date
@@ -12,6 +12,22 @@ from urllib.parse import quote_plus
 from openai import OpenAI
 from dotenv import load_dotenv
 import re
+
+# ========================
+# Lade Pfade aus Kommandozeile
+# ========================
+input_path = sys.argv[1] if len(sys.argv) > 1 else "Data/processed_articles.json"
+output_path = sys.argv[2] if len(sys.argv) > 2 else "Data/processed_articles.json"
+
+# Falls Datei noch nicht existiert, initialisiere mit leerer Liste
+if not os.path.exists(input_path):
+    os.makedirs(os.path.dirname(input_path), exist_ok=True)
+    with open(input_path, "w") as f:
+        json.dump([], f)
+
+# Lade bereits verarbeitete Artikel
+with open(input_path, "r") as f:
+    processed_articles = json.load(f)
 
 # ──────────────── Konfiguration ────────────────
 load_dotenv()
@@ -25,21 +41,15 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 CATEGORIES        = ["cs.AI","cs.LG","cs.CR","cs.DC","cs.DB","cs.NI","cs.CY","stat.ML"]
 DAYS_BACK         = 3
 BATCH_SIZE        = 5
-PROCESSED_FILE    = "processed_articles.json"
 RELEVANCE_CUTOFF  = 10   # Nur 10/10 sind relevant
 
 # ─────────── processed_articles.json laden ───────────
 def load_processed():
-    if os.path.exists(PROCESSED_FILE):
-        with open(PROCESSED_FILE, "r") as f:
-            return json.load(f)
-    return {}
+    return processed_articles
 
 def save_processed(data):
-    with open(PROCESSED_FILE, "w") as f:
+    with open(output_path, "w") as f:
         json.dump(data, f, indent=2)
-
-processed = load_processed()
 
 # ─────────────── 1) arXiv-Artikel holen ───────────────
 def fetch_articles():
@@ -53,7 +63,7 @@ def fetch_articles():
     new    = []
     for e in feed.entries:
         aid = e.id.split("/")[-1]
-        if aid in processed:
+        if aid in processed_articles:
             continue
         dt  = datetime.strptime(e.published, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
         if dt < cutoff:
@@ -66,95 +76,48 @@ def fetch_articles():
         })
     return new
 
-# ─────────────── 2) Prompt ───────────────
+# ─────────────── 2) Prompt Block (GRUNDLAGEN) ───────────────
 PROMPT = """
-Du bist ein hochentwickelter wissenschaftlicher Investment- & Technologieradar für Künstliche Intelligenz und dezentrale Dateninfrastruktur.  
-Der Nutzer hält bereits 1.000 € in Off-Chain-Storage-Token (FIL, STORJ, ASI/OCEAN, BTT, BZZ, SC) und On-Chain-Data-Availability-Token (ETH, TIA, AVAIL, AR, NEAR).  
-Du erhältst eine Liste neuer Studien (jeweils Titel + Abstract) aus peer-reviewten Journalen, Konferenzbeiträgen (z. B. NeurIPS, ICLR, IEEE, ACM, SOSP, SIGCOMM) und Preprints.
+You are a highly advanced scientific investment and technology radar specialized in Artificial Intelligence and decentralized data infrastructure.
 
-### 1. Analyse-Ziel
+The user currently holds €1,000 in off-chain storage tokens (FIL, STORJ, ASI/OCEAN, BTT, BZZ, SC) and on-chain data availability tokens (ETH, TIA, AVAIL, AR, NEAR).
 
-Identifiziere ausschließlich Studien mit **konkretem Bezug zu KI-Infrastruktur** und **dezentraler Datenverarbeitung**. Allgemeine KI-, Modellarchitektur- oder Cybersicherheitsstudien ohne Infrastrukturbezug sind **nicht relevant**.  
+You receive a list of new studies (each with title and abstract) from peer-reviewed journals, conference proceedings (e.g., NeurIPS, ICLR, IEEE, ACM, SOSP, SIGCOMM), and preprints.
 
-Deine Aufgabe:
-- Bewerte jede Studie streng auf Basis ihrer Relevanz für *dezentralisierte KI-Infrastruktur*, *Datenverfügbarkeit*, *Storage-Netzwerke*, *Data-DAOs*, *modulare Blockchains*, *KI-skalierbare Architekturen* oder *Regulatorik von Dateninfrastruktur*.
+Analysis criteria:
+- Quantitative metrics: network adoption, storage volume, transaction counts, developer activity, token economics
+- Regulatory & compliance: e.g., MiCA, SEC frameworks
+- Market research & roadmaps: Messari, L2BEAT, DePIN Scan, project roadmaps
+- Emerging paradigms: zk-rollups, modular blockchain architectures, data DAOs, DePIN, AI-optimized infrastructure
 
-### 2. Bewertungskriterien
+Your task:
+1. Assign each study a relevance score from 0 (irrelevant) to 10 (highest relevance) based on the above criteria, with a strict focus on real AI infrastructure and decentralized data processing. Studies only covering general AI, language models, or cybersecurity without clear infrastructure relevance should score low (0–3).
+2. Provide a concise 1–2 sentence summary explaining the relevance score.
+3. List up to two key figures (e.g., adoption rate, volume growth) as evidence supporting your rating.
 
-Vergib eine Bewertung von **0 bis 10**, basierend auf folgenden Kategorien:
+Focus on the presence and substantive discussion of the following core keywords and concepts:
+- Decentralized storage, Peer-to-peer networks (P2P protocols), Content addressing, Distributed hash tables (DHT), Merkle trees, Namespaced Merkle trees,
+  Blockweave architecture, Data availability sampling, Erasure coding, Proof-of-replication, Proof-of-spacetime, Proto-danksharding (EIP-4844),
+  Filecoin Virtual Machine (FVM), Modular blockchain design, Layer-2 rollups, Zero-knowledge proofs (ZKP), Restaking models (e.g., EigenLayer),
+  Cross-chain bridges, Oracle mechanisms (on-chain vs. off-chain), Decentralized identifiers (DID), Data DAOs, Incentive and token economics,
+  Content delivery via P2P (e.g., BTFS), Verifiable data provenance, Secure multiparty computation, Persistent archival storage,
+  AI data pipelines (data ingestion), Hybrid AI-human workflows, Data governance and compliance (e.g., GDPR), Developer ecosystem.
 
-- **Technologie & Infrastruktur**: Netzwerk-Adoption, Storage-Volumen, Transaktionszahlen, Entwickleraktivität, Token-Ökonomie
-- **Emergente Paradigmen**: ZK-Rollups, modulare Blockchain-Architekturen, Data-DAOs, DePIN, Filecoin/FVM, KI-optimierte Infra
-- **Regulatorik & Compliance**: z. B. GDPR, SEC, MiCA, Daten-Governance
-- **Marktdaten & Roadmaps**: z. B. Messari, L2BEAT, DePIN Scan, Entwicklerökosystem
-
-Eine Studie ist **nur bei direkter technischer Relevanz** mit **9–10/10** zu bewerten. Reine Angriffs-/Abwehrmethoden, Sprachmodelle, Bioinformatik o. Ä. ohne klaren Infrastrukturbezug sind mit 0–3 zu bewerten.
-
-### 3. Bewertungslogik mit Schlüsselwörtern
-
-Nutze insbesondere folgende **30 Kernbegriffe**, um Studien automatisiert zu erkennen und zu gewichten:
-
-Dezentrale Speicherung & Infrastruktur:
-- Dezentrale Speicherung
-- Peer-to-Peer Netzwerke (P2P-Protokolle)
-- Content-Addressing
-- Distributed Hash Tables (DHT)
-- Merkle Trees / Namespaced Merkle Trees
-- Blockweave-Architektur
-- Data Availability Sampling
-- Erasure Coding
-- Proof-of-Replication / Proof-of-Spacetime
-- Proto-Danksharding (EIP-4844)
-- Filecoin Virtual Machine (FVM)
-- Modularer Blockchain-Aufbau
-- Layer-2 Rollups
-- Zero-Knowledge-Proofs (ZKP)
-- Restaking-Modelle (z. B. EigenLayer)
-- Cross-Chain Bridges
-- Orakel-Mechanismen (On-Chain vs. Off-Chain)
-- Decentralized Identifiers (DID)
-- Data-DAOs
-- Incentive- und Token-Ökonomien
-- Content-Delivery via P2P (z. B. BTFS)
-- Verifiable Data Provenance
-- Secure Multiparty Computation
-- Persistente Archivierung (Permanent Storage)
-- Entwickler-Ökosystem (z. B. GitHub-Activity, SDKs, APIs)
-
-KI & Datenverarbeitung:
-- KI-Datenpipelines (Data Ingestion)
-- Hybrid KI-Mensch Workflows
-- Daten-Governance und Compliance (z. B. GDPR-Konformität)
-
-Relevanz-Signale:
-- **positiv:** Studien, die sich auf diese Technologien oder neue technische Konzepte dazu konzentrieren, erhalten höhere Scores.
-- **vorsicht:** Wenn eine Studie eines dieser Begriffe nur erwähnt, aber das Thema nicht vertieft, kann sie trotzdem irrelevant sein.
-
-### 4. Ausgabeformat & Bewertung
-
-Diese Zeile sollte direkt nach dem Titel oder der Zusammenfassung erscheinen.  
-Antworte ausschließlich mit einem **JSON-Array**, ohne Fließtext drumherum.  
-Jedes Element muss folgende Felder enthalten:
-
-[
-  {
-    "kurztitel": "Titel der Studie",
-    "relevant": 0–10,
-    "kurzfazit": "Begründung der Relevanzbewertung in 1–2 Sätzen",
-    "key_figures": ["optional Kennzahl 1", "optional Kennzahl 2"]
-  }
-]
-
-Verwende `relevant: 0`, wenn keine inhaltliche Relevanz vorliegt – nicht `n/a/10`.  
-Formuliere sachlich, präzise, evidenzbasiert und ohne Spekulation oder Marketing-Sprache.
+Important:
+- Only assign high scores (9–10) if the study contains direct and substantive technical relevance to AI infrastructure and decentralized data processing.
+- Do not assign "n/a" ratings; use 0 for no relevance.
+- Respond exclusively with a JSON array without any additional prose.
+- Each element must contain:
+  "kurztitel": "Short title of the study",
+  "relevant": 0–10,
+  "kurzfazit": "Concise summary explaining the score",
+  "key_figures": ["Optional key figure 1", "Optional key figure 2"]
 """
-
-
 
 def build_prompt(batch):
     text = []
     for i, art in enumerate(batch, start=1):
-        text.append(f"{i}. Titel: {art['title']}\n   Abstract: {art['summary']}")
+        text.append(f"{i}. Title: {art['title']}\n   Abstract: {art['summary']}")
     return PROMPT + "\n\n" + "\n\n".join(text)
 
 # ─────────── 3) JSON-Fallback-Parsing ───────────
@@ -162,13 +125,12 @@ def try_parse_json(text):
     try:
         return json.loads(text)
     except json.JSONDecodeError:
-        # Fallback: Nummerierte Liste per Regex extrahieren
+        print("⚠️ JSON konnte nicht direkt geparst werden – Regex-Fallback wird verwendet.")
         out = []
         pattern = re.compile(
-            r"(\d+)\.\s*Titel:\s*(.*?)\n\s*(?:Relevanz|Score|Bewertung)[^\d]*([0-9]+)\b.*?Fazit[:\s]*(.*?)(?=\n\d+\.|$)",
+            r"(\d+)\.\s*Title:\s*(.*?)\n\s*(?:Relevance|Score|Rating|Bewertung)[^\d]*([0-9]+)\b.*?Fazit[:\s]*(.*?)(?=\n\d+\.|$)",
             re.DOTALL | re.IGNORECASE
         )
-
         for idx, title, score, summary in pattern.findall(text):
             out.append({
                 "kurztitel": title.strip(),
@@ -177,7 +139,7 @@ def try_parse_json(text):
             })
         return out
 
-# ───────── 4) Analyse in 5er-Batches ─────────
+# ───────── 4) Analyse in Batches ─────────
 def analyze(articles):
     analyses = []
     for i in range(0, len(articles), BATCH_SIZE):
@@ -186,14 +148,13 @@ def analyze(articles):
         resp = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
-                {"role":"system",  "content": PROMPT},
-                {"role":"user",    "content": build_prompt(batch)}
+                {"role":"system","content": PROMPT},
+                {"role":"user",  "content": build_prompt(batch)}
             ],
             temperature=0.2
         )
         content = resp.choices[0].message.content.strip()
         parsed  = try_parse_json(content)
-        # IDs & Links ergänzen, defaults setzen
         for rec, art in zip(parsed, batch):
             rec["id"]       = art["id"]
             rec["link"]     = art["link"]
@@ -210,34 +171,31 @@ def send_email(analyses, articles):
     msg["To"]      = EMAIL_RECEIVER
     msg["Subject"] = f"🧠 KI-Update {date.today()}"
 
-    # Nur 10/10 als relevant
+    # Relevanz ≥ RELEVANCE_CUTOFF
     html = "<html><body>"
-    html += "<h2>🧠 Relevanz = 10</h2>"
-    top = [a for a in analyses if a.get("relevant")==RELEVANCE_CUTOFF]
-    if top:
-        for a in top:
+    html += f"<h2>🧠 Relevanz ≥ {RELEVENCE_CUTOFF}</h2>"
+    rel = sorted([a for a in analyses if a.get("relevant",0)>=RELEVANCE_CUTOFF], key=lambda x: x.get("relevant",0), reverse=True)
+    if rel:
+        for a in rel:
             html += (
                 f"<div style='margin-bottom:15px;'>"
-                f"<h3>{a['kurztitel']} (<b>10</b>/10)</h3>"
+                f"<h3>{a['kurztitel']} (<b>{a['relevant']}</b>/10)</h3>"
                 f"<p>{a['kurzfazit']}</p>"
                 f"<a href='{a['link']}'>{a['link']}</a>"
                 f"</div><hr>"
             )
     else:
-        html += "<p>Keine 10/10-Studien gefunden.</p>"
+        html += "<p>Keine Artikel mit ausreichender Relevanz gefunden.</p>"
 
-    # Debug: alle Artikel mit Bewertung & Fazit
+    # Debug-Sektion: alle Artikel sortiert nach Relevanz
     html += "<h2>⚙️ Debug (alle geladenen Studien)</h2>"
-    mp = {a["id"]:a for a in analyses}
-    for art in articles:
-        a = mp.get(art["id"], {})
-        score = a.get("relevant", "n/a")
-        fazit = a.get("kurzfazit","")
+    all_sorted = sorted(analyses, key=lambda x: x.get("relevant",0), reverse=True)
+    for a in all_sorted:
         html += (
             f"<div style='margin-bottom:10px;'>"
-            f"<b>{art['title']}</b> (<i>{score}/10</i>)<br>"
-            f"<a href='{art['link']}'>{art['link']}</a><br>"
-            f"<i>{fazit}</i>"
+            f"<b>{a['kurztitel']}</b> (<i>{a.get('relevant','n/a')}/10</i>)<br>"
+            f"<a href='{a['link']}'>{a['link']}</a><br>"
+            f"<i>{a['kurzfazit']}</i>"
             f"</div>"
         )
     html += "</body></html>"
@@ -254,20 +212,21 @@ if __name__ == "__main__":
     print(f"Neue Artikel: {len(articles)}")
     if not articles:
         send_email([], [])
-        exit(0)
+        sys.exit(0)
 
     analyses = analyze(articles)
-
-    # E-Mail senden
     send_email(analyses, articles)
 
-    # Als verarbeitet markieren & speichern
+    # Verarbeitet speichern
     for a in analyses:
-        processed[a["id"]] = {
-            "title":          a["kurztitel"],
-            "processed_date": str(date.today()),
-            "rating":         a["relevant"],
-            "summary":        a["kurzfazit"]
+        key = f"{a['kurztitel']}_{date.today()}"
+        processed_articles[key] = {
+            "id": a['id'],
+            "title": a['kurztitel'],
+            "relevant": a['relevant'],
+            "summary": a['kurzfazit'],
+            "date": str(date.today())
         }
-    save_processed(processed)
+    save_processed(processed_articles)
+
 
