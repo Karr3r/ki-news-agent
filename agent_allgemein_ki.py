@@ -58,91 +58,97 @@ def fetch_articles():
         })
     return new
 
-# 2) Prompt
-
+# 2) Prompt bauen mit neuem Prompttext
 def build_prompt(batch):
-    p = (
-        "Du bist ein wissenschaftlicher Investment-Agent für KI & dezentrale Dateninfrastruktur.\n"
-        "Analysiere die übergebenen Studien (Titel + Abstract) auf langfristige (5–10 Jahre) Relevanz.\n"
-        "Bewerte jedes Paper mit einer Zahl von 0 bis 10 und liefere zu jedem ein 1-Satz-Fazit.\n"
-        "Antworte bitte im folgenden Format:\n\n"
-        "1. Titel: <Titel>\n"
-        "   Relevanz: <Bewertung 0-10>\n"
-        "   Fazit: <1 Satz Fazit>\n\n"
-        "Beginne mit den folgenden Papers:\n"
+    prompt = (
+        "Du bist ein wissenschaftlicher Investment- und Technologieradar für Künstliche Intelligenz und dezentrale Dateninfrastruktur. "
+        "Dein Nutzer hat 1.000 € in Off-Chain-Storage-Token (z. B. FIL, STORJ, ASI/OCEAN, BTT, BZZ, SC) und On-Chain-Data-Availability-Token "
+        "(z. B. ETH, TIA, AVAIL, AR, NEAR) investiert.\n\n"
+        "Du erhältst eine Liste neuer Studien (Titel und Abstract). Bewerte jedes Paper auf einer Skala von 0 (irrelevant) bis 10 (höchstrelevant) "
+        "für eine langfristige (5–10 Jahre) Investitionsentscheidung.\n\n"
+        "Berücksichtige dabei ausschließlich objektive und wissenschaftliche Kriterien:\n"
+        "• Quantitative Daten wie Netzwerkadoption, Storage-Volumen, Transaktionszahlen, Entwickleraktivität und Token-Ökonomie\n"
+        "• Relevante regulatorische Rahmenbedingungen und deren Auswirkungen auf das Projektumfeld\n"
+        "• Marktanalysen, z. B. von Messari, L2BEAT, DePIN Scan, sowie Roadmaps und technologische Entwicklungsperspektiven\n\n"
+        "Gib zu jedem Paper außerdem ein prägnantes 1–2-Satz-Fazit, das deine Bewertung begründet. Vermeide Spekulationen und Marketing-Sprache – bleibe strikt empirisch und wissenschaftlich.\n\n"
+        "Die Liste der Paper:\n"
     )
-    for i, art in enumerate(batch, 1):
-        p += f"{i}. Titel: {art['title']}\n   Abstract: {art['summary']}\n"
-    return p
+    for i, art in enumerate(batch, start=1):
+        prompt += f"\n{i}. Titel: {art['title']}\nAbstract: {art['summary']}\n"
+    prompt += "\nBitte gib das Ergebnis als JSON-Liste aus, mit Feldern: kurztitel (Titel), relevant (Bewertung 0-10 als Zahl), kurzfazit (1–2 Sätze)."
+    return prompt
 
-# 3) Fallback-Parsing bei fehlgeschlagenem JSON
-
-def parse_gpt_output(raw_text, batch):
-    parsed = []
-    pattern = re.compile(
-        r"\d+\.\s*Titel:\s*(.*?)\n\s*Relevanz:?\s*(\d+)\n\s*Fazit:\s*(.*?)\n(?=\d+\. Titel:|\Z)",
-        re.DOTALL | re.IGNORECASE
-    )
-    matches = pattern.findall(raw_text)
-
-    for (title, rel, summary), art in zip(matches, batch):
-        try:
-            parsed.append({
-                "kurztitel": title.strip(),
-                "relevant": int(rel.strip()),
-                "kurzfazit": summary.strip(),
-                "id": art["id"],
-                "link": art["link"]
-            })
-        except Exception as e:
-            print("⚠️ Fehler beim Parsen eines Eintrags:", e)
-            continue
-
-    return parsed
+# 3) Versuche JSON zu parsen, falls Fehler: Fallback (regex) - robust gegen nicht-json-formatierten Text
+def try_parse_json(text):
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        # Fallback: Versuch eine strukturierte Liste per Regex rauszuziehen (sehr einfach)
+        results = []
+        pattern = re.compile(
+            r"(\d+)\.\s*Titel:\s*(.+?)\s+Relevanz[:\s]*([0-9]+)[^\d]*(?:Fazit|Summary|Begründung)[:\s]*(.+?)(?=\d+\.|$)",
+            re.DOTALL | re.IGNORECASE)
+        matches = pattern.findall(text)
+        if matches:
+            for _, title, score, summary in matches:
+                try:
+                    score_num = int(score)
+                except:
+                    score_num = 0
+                results.append({
+                    "kurztitel": title.strip(),
+                    "relevant": score_num,
+                    "kurzfazit": summary.strip().replace("\n"," "),
+                })
+            return results
+        else:
+            raise
 
 # 4) GPT-Analyse in Batches
-
 def analyze(articles):
     analyses = []
     for idx in range(0, len(articles), BATCH_SIZE):
         batch = articles[idx:idx+BATCH_SIZE]
-        print(f"Analysiere Batch {idx//BATCH_SIZE+1}/{(len(articles)+BATCH_SIZE-1)//BATCH_SIZE}")
+        print(f"Analysiere Batch {idx//BATCH_SIZE+1}/{(len(articles)-1)//BATCH_SIZE+1}")
         try:
             resp = client.chat.completions.create(
                 model="gpt-3.5-turbo",
-                messages=[{"role": "user", "content": build_prompt(batch)}],
+                messages=[{"role":"user", "content": build_prompt(batch)}],
                 temperature=0.2
             )
             content = resp.choices[0].message.content.strip()
             try:
-                arr = json.loads(content)
-                for rec, art in zip(arr, batch):
-                    rec["id"] = art["id"]
-                    rec["link"] = art["link"]
-                analyses.extend(arr)
-            except json.JSONDecodeError:
+                arr = try_parse_json(content)
+            except Exception as e:
                 print("❌ JSON-Fehler, versuche Fallback-Parsing...")
-                print("Roh-Antwort (Auszug):", content[:300].replace("\n", " ") + "…")
-                fallback = parse_gpt_output(content, batch)
-                if fallback:
-                    analyses.extend(fallback)
-                else:
-                    print("⚠️ Fallback-Parsing fehlgeschlagen.")
+                print("Roh-Antwort (Auszug):", content[:500])
+                arr = []
+            # ID & Link ergänzen, evtl. default Werte
+            for rec, art in zip(arr, batch):
+                rec["id"]   = art["id"]
+                rec["link"] = art["link"]
+                if "kurztitel" not in rec:
+                    rec["kurztitel"] = art["title"]
+                if "relevant" not in rec:
+                    rec["relevant"] = 0
+                if "kurzfazit" not in rec:
+                    rec["kurzfazit"] = ""
+            analyses.extend(arr)
         except Exception as e:
-            print("❌ GPT-/Analysefehler:", e)
+            print("❌ GPT-/JSON-Fehler:", e)
     return analyses
 
-# 5) E-Mail versenden (mit Relevanzfilter & Debug)
-
+# 5) E-Mail versenden (Relevanz ab 8, Debug alle Artikel mit Bewertung)
 def send_email(analyses, articles):
     msg = MIMEMultipart("alternative")
     msg["From"]    = EMAIL_ADDRESS
     msg["To"]      = EMAIL_RECEIVER
     msg["Subject"] = f"KI-Update {datetime.now().date()}"
 
+    # Relevante Artikel (Score >= 8)
     html = "<html><body>"
-    html += "<h2 style='border-bottom:1px solid #ccc;'>🧠 Relevanz ≥ 6</h2>"
-    rel = [a for a in analyses if a.get("relevant", 0) >= 6]
+    html += "<h2 style='border-bottom:1px solid #ccc;'>🧠 Relevanz ≥ 8</h2>"
+    rel = [a for a in analyses if a.get("relevant", 0) >= 8]
     if rel:
         for a in rel:
             html += (
@@ -153,18 +159,21 @@ def send_email(analyses, articles):
                 f"</div><hr>"
             )
     else:
-        html += "<p>Keine Artikel mit Relevanz ≥ 6 gefunden.</p>"
+        html += "<p>Keine Artikel mit Relevanz ≥ 8 gefunden.</p>"
 
-    html += "<h2 style='border-bottom:1px solid #ccc;'>⚙️ Debug (neu geladen)</h2>"
-    aid_map = {a["id"]: a for a in analyses}
+    # Debug-Abschnitt: alle neu geladenen Artikel mit Bewertung (wenn vorhanden)
+    html += "<h2 style='border-bottom:1px solid #ccc;'>⚙️ Debug (neu geladen mit Bewertung)</h2>"
+    # Map Artikel-ID auf Bewertung + Fazit, falls vorhanden
+    analysis_map = {a["id"]: a for a in analyses}
     for art in articles:
-        analysis = aid_map.get(art["id"], {})
-        score = analysis.get("relevant", "–")
-        title = analysis.get("kurztitel", art["title"])
+        a = analysis_map.get(art["id"], {})
+        score = a.get("relevant", "n/a")
+        fazit = a.get("kurzfazit", "")
         html += (
             f"<div style='margin-bottom:10px;'>"
-            f"<b>{title}</b> (<b>{score}</b>/10)<br>"
-            f"<a href='{art['link']}'>{art['link']}</a>"
+            f"<b>{art['title']}</b> (<i>Bewertung: {score}/10</i>)<br>"
+            f"<a href='{art['link']}'>{art['link']}</a><br>"
+            f"<i>{fazit}</i>"
             f"</div>"
         )
 
@@ -180,17 +189,12 @@ def send_email(analyses, articles):
         print("❌ Fehler beim Senden:", e)
 
 # 6) Hauptprogramm
-
 if __name__ == "__main__":
     articles = fetch_articles()
     print(f"Neue Artikel: {len(articles)}")
     if not articles:
-        send_email([], [])
+        send_email([], [])  # gibt Debug leer aus
         exit(0)
 
-    analyses = analyze(articles)
-    processed_ids.update([a["id"] for a in articles])
-    with open(PROCESSED_FILE, "w") as f:
-        json.dump(list(processed_ids), f)
+    analyses =
 
-    send_email(analyses, articles)
