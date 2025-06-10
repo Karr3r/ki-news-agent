@@ -106,9 +106,10 @@ def try_parse_json(text):
         # Fallback: Nummerierte Liste per Regex extrahieren
         out = []
         pattern = re.compile(
-            r"(\d+)\.\s*Titel:\s*(.*?)\n\s*Relevanz[:\s]*([0-9]+)\b.*?Fazit[:\s]*(.*?)(?=\n\d+\.|$)",
+            r"(\d+)\.\s*Titel:\s*(.*?)\n\s*(?:Relevanz|Score|Bewertung)[^\d]*([0-9]+)\b.*?Fazit[:\s]*(.*?)(?=\n\d+\.|$)",
             re.DOTALL | re.IGNORECASE
         )
+
         for idx, title, score, summary in pattern.findall(text):
             out.append({
                 "kurztitel": title.strip(),
