@@ -1,50 +1,48 @@
-name: Tägliches KI-Update
+name: KI News Agent (daily)
 
 on:
   schedule:
-    - cron: '30 5 * * *'   # 07:30 MESZ
-  workflow_dispatch: {}
+    - cron: '30 5 * * *'  # 07:30 Uhr (UTC+2) täglich
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
-    # Secrets als Umgebungsvariablen verfügbar machen
-    env:
-      OPENAI_API_KEY:     ${{ secrets.OPENAI_API_KEY }}
-      EMAIL_ADDRESS:      ${{ secrets.EMAIL_ADDRESS }}
-      EMAIL_APP_PASSWORD: ${{ secrets.EMAIL_APP_PASSWORD }}
-      EMAIL_RECEIVER:     ${{ secrets.EMAIL_RECEIVER }}
-
     steps:
-      - name: Code auschecken
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Vorheriges processed_articles.json herunterladen (falls vorhanden)
-      - name: Download processed_articles.json
-        uses: actions/download-artifact@v4
-        continue-on-error: true
+      - name: Restore processed_articles.json from cache
+        uses: actions/cache@v3
         with:
-          name: processed-articles
-          path: .
+          path: processed_articles.json
+          key: processed-articles-${{ runner.os }}
+          restore-keys: |
+            processed-articles-${{ runner.os }}
 
-      - name: Python-Umgebung einrichten
+      - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.x'
+          python-version: '3.11'
 
-      - name: Abhängigkeiten installieren
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install feedparser openai python-dotenv
+          pip install openai feedparser python-dotenv
 
-      - name: Agent ausführen
+      - name: Run KI News Agent
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          EMAIL_ADDRESS: ${{ secrets.EMAIL_ADDRESS }}
+          EMAIL_APP_PASSWORD: ${{ secrets.EMAIL_APP_PASSWORD }}
+          EMAIL_RECEIVER: ${{ secrets.EMAIL_RECEIVER }}
         run: python agent_allgemein_ki.py
 
-      # Aktuelles processed_articles.json hochladen
-      - name: Upload processed_articles.json
-        uses: actions/upload-artifact@v4
+      - name: Save updated processed_articles.json to cache
+        if: always()
+        uses: actions/cache@v3
         with:
-          name: processed-articles
           path: processed_articles.json
+          key: processed-articles-${{ runner.os }}
 
