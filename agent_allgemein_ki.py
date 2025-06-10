@@ -66,7 +66,7 @@ def fetch_articles():
         })
     return new
 
-# ─────────────── 2) Langweiliger Prompt ───────────────
+# ─────────────── 2) Prompt ───────────────
 PROMPT = """
 Du bist ein hochentwickelter wissenschaftlicher Investment- & Technologieradar für Künstliche Intelligenz und dezentrale Dateninfrastruktur.
 Der Nutzer hält bereits 1 000 € in Off-Chain-Storage-Token (FIL, STORJ, ASI/OCEAN, BTT, BZZ, SC) und On-Chain-Data-Availability-Token (ETH, TIA, AVAIL, AR, NEAR).
@@ -81,35 +81,41 @@ Du erhältst eine Liste neuer Studien (jeweils Titel + Abstract) aus peer-review
 **Aufgabe:**
 1. Vergib für jede Studie eine Gesamtbewertung von 0 (irrelevant) bis 10 (höchste Relevanz).
 2. Erstelle ein prägnantes 1–2-Satz-Fazit, das die Bewertung begründet.
-3. Liste 1–2 Schlüsselzahlen (z. B. Adoption-Rate, Volumen-Wachstum) als Beleg.
+3. Liste 1–2 Schlüsselzahlen (z. B. Adoption-Rate, Volumen-Wachstum) als Beleg.
 
-Bitte bewerte die Relevanz des Artikels zusätzlich auf einer Skala von 0 bis 10 – ganzzahlig.
+**Bitte antworte ausschließlich mit einem JSON-Array, ohne Fließtext drumherum.**
+Jedes Element muss folgende Felder enthalten:
+- "kurztitel": String
+- "relevant": Integer 0–10
+- "kurzfazit": String
+- "key_figures": Array von bis zu zwei Strings
 
-Verwende dabei folgende Relevanzskala:
+---
 
-- 10/10: bahnbrechende Forschungsarbeit mit klarer praktischer Anwendung oder strategischem Impact im Bereich KI, Datenschutz oder dezentraler Dateninfrastruktur.  
-- 8–9: sehr relevante Methode oder Architektur mit hoher Innovationsdichte oder unmittelbarem Potenzial für Einsatz in produktiven Systemen.  
-- 5–7: interessante oder solide Arbeit, theoretisch fundiert, aber ohne klaren Durchbruch oder ohne direkten Praxisbezug.  
-- 1–4: begrenzt relevant für den Kontext, z. B. sehr spezifisch, inkrementell, oder mit wenig Transferpotenzial.  
-- 0: thematisch völlig außerhalb des Fokus.
+**Wichtig:**
+Der Bewertungsscore muss als Zahl zwischen 0 und 10 ausgegeben werden, z. B. `"relevant": 7`.  
+Nutze dabei explizit eines der Schlüsselwörter: `"Relevanz"`, `"Score"`, `"Bewertung"` oder `"Rating"`  
+und gib die Bewertung im Format `"Relevanz": 7`, `"Score": 7`, `"Bewertung": 7` oder `"Rating": 7` aus.
 
-Berücksichtige insbesondere, ob der Beitrag…
+---
 
-- neue Verfahren, Modelle oder Benchmarks für KI oder Machine Learning vorstellt,  
-- robuste oder sichere KI-Methoden behandelt,  
-- dezentrale Infrastrukturen oder verteiltes Lernen adressiert (z. B. FL, Edge ML, Blockchain-KI),  
-- oder Datenschutz, Interpretierbarkeit, Fairness, Effizienz oder Nachhaltigkeit in ML fokussiert.
+**Beispiele für Ausgabeformate:**
+```json
+[
+  {
+    "kurztitel": "Beispielstudie 1",
+    "relevant": 8,
+    "kurzfazit": "Diese Studie liefert wichtige Einblicke in ...",
+    "key_figures": ["Adoptionsrate 12%", "Netzwerkwachstum 30%"]
+  },
+  {
+    "kurztitel": "Beispielstudie 2",
+    "relevant": 3,
+    "kurzfazit": "Wenig relevant für die aktuelle Marktsituation.",
+    "key_figures": []
+  }
+]
 
-Achte auf Schlüsselwörter wie z. B.:  
-robustness, scalability, privacy, federated, quantum, energy efficiency, real-world deployment, benchmark, LLM, GNN, attack, mitigation, secure, interpretable, self-supervised, multi-agent, graph, foundation model, infrastructure, distributed, on-device, low-resource, open-source.
-
-Formatvorgabe:  
-Gib den Relevanz-Score **am Anfang der Ausgabezeile** im folgenden Format an:
-
-Relevanz: <Zahl>/10
-
-Beispiel:  
-Relevanz: 8/10
 
 Diese Zeile sollte direkt nach dem Titel oder der Zusammenfassung erscheinen.
 
