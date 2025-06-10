@@ -93,6 +93,8 @@ Der Nutzer hält bereits 1.000 € in Off-Chain-Storage-Token (FIL, STORJ, ASI
 2. Gib ein prägnantes, faktenbasiertes Fazit (1–2 Sätze), das die Bewertung begründet.
 3. Liste ein bis zwei relevante Schlüsselzahlen oder empirische Befunde (z. B. Entwickler-Wachstum, Token-Verteilung, Storage-Volumen, Netzwerkkapazität).
 4. Formuliere **ohne Spekulation oder Marketing-Sprache**.
+5. Falls keine Relevanz zu den genannten Infrastrukturaspekten besteht, ist die Bewertung exakt: Relevanz: 0/10
+
 
 ### Format:
 - Verwende für die Bewertung **immer ein maschinenlesbares Format**, z. B.:  
