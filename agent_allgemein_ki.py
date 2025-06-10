@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, UTC
 from urllib.parse import quote_plus
 from openai import OpenAI
 from dotenv import load_dotenv
+import re
 
 # ENV-Variablen laden
 load_dotenv()
@@ -57,39 +58,80 @@ def fetch_articles():
         })
     return new
 
-# 2) Ultrakurzer Prompt
+# 2) Angepasster Prompt (dein Wunschtext, mit klarer Ausgabeanweisung)
 def build_prompt(batch):
-    p = ("Ultrakurz: Bewerte folgende Paper (Titel+Abstract) auf Relevanz 0–10 "
-         "und gib ein 1-Satz-Fazit:")
-    for art in batch:
-        p += f"\n\nTitel: {art['title']}\nAbstract: {art['summary']}"
+    p = (
+        "Du bist ein wissenschaftlicher Investment-Agent für KI & dezentrale Dateninfrastruktur.\n"
+        "Analysiere die übergebenen Studien (Titel + Abstract) auf langfristige (5–10 Jahre) Relevanz.\n"
+        "Bewerte jedes Paper mit einer Zahl von 0 bis 10 und liefere zu jedem ein 1-Satz-Fazit.\n"
+        "Antworte bitte im folgenden Format:\n\n"
+        "1. Titel: <Titel>\n"
+        "   Relevanz: <Bewertung 0-10>\n"
+        "   Fazit: <1 Satz Fazit>\n\n"
+        "Beginne mit den folgenden Papers:\n"
+    )
+    for i, art in enumerate(batch, 1):
+        p += f"{i}. Titel: {art['title']}\n   Abstract: {art['summary']}\n"
     return p
 
-# 3) GPT-Analyse in Batches
+# 3) Fallback-Parsing bei fehlgeschlagenem JSON
+def parse_gpt_output(raw_text, batch):
+    parsed = []
+    pattern = re.compile(
+        r"\d+\.\s*Titel:\s*(.*?)\n\s*Relevanz:?\s*(\d+)\n\s*Fazit:\s*(.*?)\n(?=\d+\. Titel:|\Z)",
+        re.DOTALL | re.IGNORECASE
+    )
+    matches = pattern.findall(raw_text)
+
+    for (title, rel, summary), art in zip(matches, batch):
+        try:
+            parsed.append({
+                "kurztitel": title.strip(),
+                "relevant": int(rel.strip()),
+                "kurzfazit": summary.strip(),
+                "id": art["id"],
+                "link": art["link"]
+            })
+        except Exception as e:
+            print("⚠️ Fehler beim Parsen eines Eintrags:", e)
+            continue
+
+    return parsed
+
+# 4) GPT-Analyse in Batches mit robustem JSON-Fallback
 def analyze(articles):
     analyses = []
     for idx in range(0, len(articles), BATCH_SIZE):
         batch = articles[idx:idx+BATCH_SIZE]
-        print(f"Analysiere Batch {idx//BATCH_SIZE+1}/{(len(articles)-1)//BATCH_SIZE+1}")
+        print(f"Analysiere Batch {idx//BATCH_SIZE+1}/{(len(articles)+BATCH_SIZE-1)//BATCH_SIZE}")
         try:
             resp = client.chat.completions.create(
                 model="gpt-3.5-turbo",
-                messages=[{"role":"user", "content": build_prompt(batch)}],
+                messages=[{"role": "user", "content": build_prompt(batch)}],
                 temperature=0.2
             )
             content = resp.choices[0].message.content.strip()
-            arr = json.loads(content)
-            # ID & Link ergänzen
-            for rec, art in zip(arr, batch):
-                rec["id"]   = art["id"]
-                rec["link"] = art["link"]
-            analyses.extend(arr)
+            try:
+                # Versuch: JSON parsen (für zukünftige Fälle)
+                arr = json.loads(content)
+                for rec, art in zip(arr, batch):
+                    rec["id"] = art["id"]
+                    rec["link"] = art["link"]
+                analyses.extend(arr)
+            except json.JSONDecodeError:
+                # Kein JSON, also Textparsing
+                print("❌ JSON-Fehler, versuche Fallback-Parsing...")
+                print("Roh-Antwort (Auszug):", content[:300].replace("\n", " ") + "…")
+                fallback = parse_gpt_output(content, batch)
+                if fallback:
+                    analyses.extend(fallback)
+                else:
+                    print("⚠️ Fallback-Parsing fehlgeschlagen.")
         except Exception as e:
-            print("❌ GPT-/JSON-Fehler:", e)
-            print("Roh-Antwort:", content if 'content' in locals() else "")
+            print("❌ GPT-/Analysefehler:", e)
     return analyses
 
-# 4) E-Mail versenden (jetzt mit Debug aller Artikel)
+# 5) E-Mail versenden (mit Relevanzfilter & Debug-Info)
 def send_email(analyses, articles):
     msg = MIMEMultipart("alternative")
     msg["From"]    = EMAIL_ADDRESS
@@ -133,12 +175,12 @@ def send_email(analyses, articles):
     except Exception as e:
         print("❌ Fehler beim Senden:", e)
 
-# 5) Hauptprogramm
+# 6) Hauptprogramm
 if __name__ == "__main__":
     articles = fetch_articles()
     print(f"Neue Artikel: {len(articles)}")
     if not articles:
-        send_email([], [])  # gibt Debug leer aus
+        send_email([], [])  # Gibt Debug leer aus
         exit(0)
 
     analyses = analyze(articles)
