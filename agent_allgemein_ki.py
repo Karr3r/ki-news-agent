@@ -58,7 +58,8 @@ def fetch_articles():
         })
     return new
 
-# 2) Angepasster Prompt (dein Wunschtext, mit klarer Ausgabeanweisung)
+# 2) Prompt
+
 def build_prompt(batch):
     p = (
         "Du bist ein wissenschaftlicher Investment-Agent für KI & dezentrale Dateninfrastruktur.\n"
@@ -75,6 +76,7 @@ def build_prompt(batch):
     return p
 
 # 3) Fallback-Parsing bei fehlgeschlagenem JSON
+
 def parse_gpt_output(raw_text, batch):
     parsed = []
     pattern = re.compile(
@@ -98,7 +100,8 @@ def parse_gpt_output(raw_text, batch):
 
     return parsed
 
-# 4) GPT-Analyse in Batches mit robustem JSON-Fallback
+# 4) GPT-Analyse in Batches
+
 def analyze(articles):
     analyses = []
     for idx in range(0, len(articles), BATCH_SIZE):
@@ -112,14 +115,12 @@ def analyze(articles):
             )
             content = resp.choices[0].message.content.strip()
             try:
-                # Versuch: JSON parsen (für zukünftige Fälle)
                 arr = json.loads(content)
                 for rec, art in zip(arr, batch):
                     rec["id"] = art["id"]
                     rec["link"] = art["link"]
                 analyses.extend(arr)
             except json.JSONDecodeError:
-                # Kein JSON, also Textparsing
                 print("❌ JSON-Fehler, versuche Fallback-Parsing...")
                 print("Roh-Antwort (Auszug):", content[:300].replace("\n", " ") + "…")
                 fallback = parse_gpt_output(content, batch)
@@ -131,14 +132,14 @@ def analyze(articles):
             print("❌ GPT-/Analysefehler:", e)
     return analyses
 
-# 5) E-Mail versenden (mit Relevanzfilter & Debug-Info)
+# 5) E-Mail versenden (mit Relevanzfilter & Debug)
+
 def send_email(analyses, articles):
     msg = MIMEMultipart("alternative")
     msg["From"]    = EMAIL_ADDRESS
     msg["To"]      = EMAIL_RECEIVER
     msg["Subject"] = f"KI-Update {datetime.now().date()}"
 
-    # Relevante Artikel (Score >= 6)
     html = "<html><body>"
     html += "<h2 style='border-bottom:1px solid #ccc;'>🧠 Relevanz ≥ 6</h2>"
     rel = [a for a in analyses if a.get("relevant", 0) >= 6]
@@ -154,12 +155,15 @@ def send_email(analyses, articles):
     else:
         html += "<p>Keine Artikel mit Relevanz ≥ 6 gefunden.</p>"
 
-    # Debug-Abschnitt: alle neu geladenen Artikel
     html += "<h2 style='border-bottom:1px solid #ccc;'>⚙️ Debug (neu geladen)</h2>"
+    aid_map = {a["id"]: a for a in analyses}
     for art in articles:
+        analysis = aid_map.get(art["id"], {})
+        score = analysis.get("relevant", "–")
+        title = analysis.get("kurztitel", art["title"])
         html += (
             f"<div style='margin-bottom:10px;'>"
-            f"<b>{art['title']}</b><br>"
+            f"<b>{title}</b> (<b>{score}</b>/10)<br>"
             f"<a href='{art['link']}'>{art['link']}</a>"
             f"</div>"
         )
@@ -176,19 +180,17 @@ def send_email(analyses, articles):
         print("❌ Fehler beim Senden:", e)
 
 # 6) Hauptprogramm
+
 if __name__ == "__main__":
     articles = fetch_articles()
     print(f"Neue Artikel: {len(articles)}")
     if not articles:
-        send_email([], [])  # Gibt Debug leer aus
+        send_email([], [])
         exit(0)
 
     analyses = analyze(articles)
-
-    # processed_ids aktualisieren & speichern
     processed_ids.update([a["id"] for a in articles])
     with open(PROCESSED_FILE, "w") as f:
         json.dump(list(processed_ids), f)
 
-    # E-Mail mit Analysen + Debug-Übersicht aller neu geladenen Artikel
     send_email(analyses, articles)
