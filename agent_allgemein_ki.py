@@ -12,6 +12,8 @@ from urllib.parse import quote_plus
 from openai import OpenAI
 from dotenv import load_dotenv
 import re
+import smtplib
+
 
 # ========================
 # Lade Pfade aus Kommandozeile
