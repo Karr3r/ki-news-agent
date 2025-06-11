@@ -21,15 +21,21 @@ import smtplib
 input_path = sys.argv[1] if len(sys.argv) > 1 else "Data/processed_articles.json"
 output_path = sys.argv[2] if len(sys.argv) > 2 else "Data/processed_articles.json"
 
-# Falls Datei noch nicht existiert, initialisiere mit leerer Liste
+# Falls Datei noch nicht existiert, initialisiere mit leerem Dict
 if not os.path.exists(input_path):
     os.makedirs(os.path.dirname(input_path), exist_ok=True)
     with open(input_path, "w") as f:
-        json.dump([], f)
+        json.dump({}, f)  # <-- DICTIONARY, nicht Liste!
 
 # Lade bereits verarbeitete Artikel
 with open(input_path, "r") as f:
-    processed_articles = json.load(f)
+    try:
+        processed_articles = json.load(f)
+        if not isinstance(processed_articles, dict):
+            processed_articles = {}  # fallback, falls versehentlich [] o.ä. geladen wurde
+    except json.JSONDecodeError:
+        processed_articles = {}
+
 
 # ──────────────── Konfiguration ────────────────
 load_dotenv()
