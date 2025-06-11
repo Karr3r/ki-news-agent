@@ -7,7 +7,7 @@ import sys
 import feedparser
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from datetime import datetime, timedelta, UTC, date
+from datetime import datetime, timedelta, timezone, date
 from urllib.parse import quote_plus
 from openai import OpenAI
 from dotenv import load_dotenv
@@ -59,13 +59,13 @@ def fetch_articles():
     url    = f"{base}search_query={sq}&sortBy=submittedDate&sortOrder=descending&start=0&max_results=200"
     feed   = feedparser.parse(url)
 
-    cutoff = datetime.now(UTC) - timedelta(days=DAYS_BACK)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=DAYS_BACK)
     new    = []
     for e in feed.entries:
         aid = e.id.split("/")[-1]
         if aid in processed_articles:
             continue
-        dt  = datetime.strptime(e.published, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+        dt  = datetime.strptime(e.published, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
         if dt < cutoff:
             continue
         new.append({
