@@ -9,6 +9,14 @@ jobs:
   run-agent:
     runs-on: ubuntu-latest
 
+     # Secrets als Umgebungsvariablen verfügbar machenAdd commentMore actions
+    env:
+      OPENAI_API_KEY:     ${{ secrets.OPENAI_API_KEY }}
+      EMAIL_ADDRESS:      ${{ secrets.EMAIL_ADDRESS }}
+      EMAIL_APP_PASSWORD: ${{ secrets.EMAIL_APP_PASSWORD }}
+      EMAIL_RECEIVER:     ${{ secrets.EMAIL_RECEIVER }}
+
+
     steps:
       - name: 📦 Checkout Repository
         uses: actions/checkout@v3
