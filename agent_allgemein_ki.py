@@ -175,7 +175,7 @@ def send_email(analyses, articles):
 
     # Relevanz ≥ RELEVANCE_CUTOFF
     html = "<html><body>"
-    html += f"<h2>🧠 Relevanz ≥ {RELEVENCE_CUTOFF}</h2>"
+    html += f"<h2>🧠 Relevanz ≥ {RELEVANCE_CUTOFF}</h2>"
     rel = sorted([a for a in analyses if a.get("relevant",0)>=RELEVANCE_CUTOFF], key=lambda x: x.get("relevant",0), reverse=True)
     if rel:
         for a in rel:
