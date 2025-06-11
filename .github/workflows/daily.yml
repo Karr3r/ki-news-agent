@@ -2,7 +2,7 @@ name: KI News Agent
 
 on:
   schedule:
-    - cron: "30 5 * * *"  # Täglich um 7:30 Uhr MESZ (UTC+2)
+    - cron: "30 5 * * *"  # Täglich um 07:30 MESZ (05:30 UTC)
   workflow_dispatch:
 
 jobs:
@@ -10,32 +10,34 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository
+      - name: 📦 Checkout Repository
         uses: actions/checkout@v3
 
-      - name: Download previous processed_articles.json (if exists)
-        uses: actions/download-artifact@v3
+      - name: 📥 Download previous processed_articles.json (if exists)
+        uses: actions/download-artifact@v4
         with:
           name: processed-articles
           path: ./Data
-        continue-on-error: true  # wichtig, damit der erste Run funktioniert
+        continue-on-error: true
 
-      - name: Set up Python
+      - name: 🐍 Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: "3.10"
 
-      - name: Install dependencies
+      - name: 📦 Install dependencies
         run: |
-          pip install -r requirements.txt
+          pip install --upgrade pip
+          pip install feedparser openai python-dotenv
 
-      - name: Run KI News Agent
+      - name: 🤖 Run KI News Agent
         run: |
           python agent_allgemein_ki.py ./Data/processed_articles.json ./Data/processed_articles.json
 
-      - name: Upload processed_articles.json for future runs
-        uses: actions/upload-artifact@v3
+      - name: 📤 Upload updated processed_articles.json
+        uses: actions/upload-artifact@v4
         with:
           name: processed-articles
           path: ./Data/processed_articles.json
+
 
