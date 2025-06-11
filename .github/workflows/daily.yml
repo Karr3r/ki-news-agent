@@ -26,7 +26,7 @@ jobs:
           path: ./Data/processed_articles.json
           key: processed-articles-cache
 
-      - name: 🛠️ Fallback: Initialisiere leere processed_articles.json falls nicht vorhanden
+      - name: 🛠️ Fallback Initialisiere leere processed_articles.json falls nicht vorhanden
         run: |
           mkdir -p ./Data
           if [ ! -f ./Data/processed_articles.json ]; then
