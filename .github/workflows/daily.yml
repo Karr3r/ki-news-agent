@@ -9,24 +9,32 @@ jobs:
   run-agent:
     runs-on: ubuntu-latest
 
-     # Secrets als Umgebungsvariablen verfügbar machenAdd commentMore actions
     env:
       OPENAI_API_KEY:     ${{ secrets.OPENAI_API_KEY }}
       EMAIL_ADDRESS:      ${{ secrets.EMAIL_ADDRESS }}
       EMAIL_APP_PASSWORD: ${{ secrets.EMAIL_APP_PASSWORD }}
       EMAIL_RECEIVER:     ${{ secrets.EMAIL_RECEIVER }}
 
-
     steps:
       - name: 📦 Checkout Repository
         uses: actions/checkout@v3
 
-      - name: 📥 Download previous processed_articles.json (if exists)
-        uses: actions/download-artifact@v4
+      - name: 💾 Restore cached processed_articles.json
+        uses: actions/cache/restore@v4
+        id: restore_cache
         with:
-          name: processed-articles
-          path: ./Data
-        continue-on-error: true
+          path: ./Data/processed_articles.json
+          key: processed-articles-cache
+
+      - name: 🛠️ Fallback: Initialisiere leere processed_articles.json falls nicht vorhanden
+        run: |
+          mkdir -p ./Data
+          if [ ! -f ./Data/processed_articles.json ]; then
+            echo "[]" > ./Data/processed_articles.json
+            echo "⚠️ Keine Datei im Cache gefunden. Leere Datei erzeugt."
+          else
+            echo "✅ processed_articles.json aus Cache geladen."
+          fi
 
       - name: 🐍 Set up Python
         uses: actions/setup-python@v4
@@ -42,10 +50,11 @@ jobs:
         run: |
           python agent_allgemein_ki.py ./Data/processed_articles.json ./Data/processed_articles.json
 
-      - name: 📤 Upload updated processed_articles.json
-        uses: actions/upload-artifact@v4
+      - name: 💾 Save updated processed_articles.json to cache
+        uses: actions/cache/save@v4
         with:
-          name: processed-articles
           path: ./Data/processed_articles.json
+          key: processed-articles-cache
+
 
 
