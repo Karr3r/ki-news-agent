@@ -70,15 +70,15 @@ def fetch_articles():
     cutoff = datetime.now(timezone.utc) - timedelta(days=DAYS_BACK)
     new    = []
     for e in feed.entries:
-        aid = e.id.split("/")[-1]
-        if aid in processed_articles:
+        title = e.title.strip()
+        if title in processed_articles:
             continue
         dt  = datetime.strptime(e.published, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
         if dt < cutoff:
             continue
         new.append({
-            "id":      aid,
-            "title":   e.title.strip(),
+            "id":      e.id.split("/")[-1],
+            "title":   title,
             "summary": e.summary.replace("\n"," ").strip(),
             "link":    e.link
         })
@@ -185,56 +185,53 @@ def send_email(analyses, articles):
     rel = sorted([a for a in analyses if a.get("relevant",0)>=RELEVANCE_CUTOFF], key=lambda x: x.get("relevant",0), reverse=True)
     if rel:
         for a in rel:
-            html += (
-                f"<div style='margin-bottom:15px;'>"
-                f"<h3>{a['kurztitel']} (<b>{a['relevant']}</b>/10)</h3>"
-                f"<p>{a['kurzfazit']}</p>"
-                f"<a href='{a['link']}'>{a['link']}</a>"
-                f"</div><hr>"
-            )
+            html += f'<h3><a href="{a.get("link")}">{a.get("kurztitel")}</a> (Score: {a.get("relevant")})</h3>'
+            html += f'<p>{a.get("kurzfazit")}</p>'
     else:
-        html += "<p>Keine Artikel mit ausreichender Relevanz gefunden.</p>"
+        html += "<p>Keine relevanten Artikel gefunden.</p>"
 
-    # Debug-Sektion: alle Artikel sortiert nach Relevanz
-    html += "<h2>⚙️ Debug (alle geladenen Studien)</h2>"
-    all_sorted = sorted(analyses, key=lambda x: x.get("relevant",0), reverse=True)
-    for a in all_sorted:
-        html += (
-            f"<div style='margin-bottom:10px;'>"
-            f"<b>{a['kurztitel']}</b> (<i>{a.get('relevant','n/a')}/10</i>)<br>"
-            f"<a href='{a['link']}'>{a['link']}</a><br>"
-            f"<i>{a['kurzfazit']}</i>"
-            f"</div>"
-        )
+    # Relevanz < RELEVANCE_CUTOFF
+    html += f"<hr><h2>🔍 Relevanz &lt; {RELEVANCE_CUTOFF}</h2>"
+    irr = [a for a in analyses if a.get("relevant",0)<RELEVANCE_CUTOFF]
+    if irr:
+        for a in irr:
+            html += f'<h3><a href="{a.get("link")}">{a.get("kurztitel")}</a> (Score: {a.get("relevant")})</h3>'
+            html += f'<p>{a.get("kurzfazit")}</p>'
+    else:
+        html += "<p>Keine irrelevanten Artikel.</p>"
+
     html += "</body></html>"
+
     msg.attach(MIMEText(html, "html"))
 
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as s:
-        s.login(EMAIL_ADDRESS, EMAIL_APP_PW)
-        s.send_message(msg)
-        print("✅ E-Mail gesendet")
+    # SMTP
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        server.login(EMAIL_ADDRESS, EMAIL_APP_PW)
+        server.sendmail(EMAIL_ADDRESS, EMAIL_RECEIVER, msg.as_string())
 
-# ───────── Hauptprogramm ─────────
+# ─────────── Hauptprogramm ───────────
 if __name__ == "__main__":
     articles = fetch_articles()
-    print(f"Neue Artikel: {len(articles)}")
+
     if not articles:
-        send_email([], [])
+        print("Keine neuen Artikel zum Analysieren gefunden.")
         sys.exit(0)
 
     analyses = analyze(articles)
-    send_email(analyses, articles)
 
-    # Verarbeitet speichern
+    # Speichere Analysen mit Titel als Schlüssel (zur Vermeidung von Duplikaten)
     for a in analyses:
-        key = f"{a['kurztitel']}_{date.today()}"
+        key = a['kurztitel']
         processed_articles[key] = {
             "id": a['id'],
             "title": a['kurztitel'],
             "relevant": a['relevant'],
-            "summary": a['kurzfazit'],
-            "date": str(date.today())
+            "summary": a['kurzfazit']
         }
     save_processed(processed_articles)
+
+    send_email(analyses, articles)
+    print(f"✅ Fertig. {len(analyses)} Artikel analysiert, Ergebnisse gespeichert und E-Mail gesendet.")
+
 
 
