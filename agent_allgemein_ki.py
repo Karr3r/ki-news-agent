@@ -5,6 +5,7 @@ import os
 import json
 import sys
 import feedparser
+import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from datetime import datetime, timedelta, timezone, date
@@ -12,30 +13,27 @@ from urllib.parse import quote_plus
 from openai import OpenAI
 from dotenv import load_dotenv
 import re
-import smtplib
-
 
 # ========================
 # Lade Pfade aus Kommandozeile
 # ========================
-input_path = sys.argv[1] if len(sys.argv) > 1 else "Data/processed_articles.json"
+input_path  = sys.argv[1] if len(sys.argv) > 1 else "Data/processed_articles.json"
 output_path = sys.argv[2] if len(sys.argv) > 2 else "Data/processed_articles.json"
 
 # Falls Datei noch nicht existiert, initialisiere mit leerem Dict
 if not os.path.exists(input_path):
     os.makedirs(os.path.dirname(input_path), exist_ok=True)
     with open(input_path, "w") as f:
-        json.dump({}, f)  # <-- DICTIONARY, nicht Liste!
+        json.dump({}, f)
 
-# Lade bereits verarbeitete Artikel
+# Lade bereits verarbeitete Artikel (als Dict mit Titel als Key)
 with open(input_path, "r") as f:
     try:
         processed_articles = json.load(f)
         if not isinstance(processed_articles, dict):
-            processed_articles = {}  # fallback, falls versehentlich [] o.ä. geladen wurde
+            processed_articles = {}
     except json.JSONDecodeError:
         processed_articles = {}
-
 
 # ──────────────── Konfiguration ────────────────
 load_dotenv()
@@ -46,34 +44,28 @@ EMAIL_RECEIVER = os.getenv("EMAIL_RECEIVER")
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 
-CATEGORIES        = ["cs.AI","cs.LG","cs.CR","cs.DC","cs.DB","cs.NI","cs.CY","stat.ML"]
-DAYS_BACK         = 3
-BATCH_SIZE        = 5
-RELEVANCE_CUTOFF  = 10   # Nur 10/10 sind relevant
-
-# ─────────── processed_articles.json laden ───────────
-def load_processed():
-    return processed_articles
-
-def save_processed(data):
-    with open(output_path, "w") as f:
-        json.dump(data, f, indent=2)
+CATEGORIES       = ["cs.AI","cs.LG","cs.CR","cs.DC","cs.DB","cs.NI","cs.CY","stat.ML"]
+DAYS_BACK        = 3
+BATCH_SIZE       = 5
+RELEVANCE_CUTOFF = 10
 
 # ─────────────── 1) arXiv-Artikel holen ───────────────
 def fetch_articles():
-    base   = "http://export.arxiv.org/api/query?"
-    raw    = "cat:" + " OR cat:".join(CATEGORIES)
-    sq     = quote_plus(raw)
-    url    = f"{base}search_query={sq}&sortBy=submittedDate&sortOrder=descending&start=0&max_results=200"
-    feed   = feedparser.parse(url)
+    base = "http://export.arxiv.org/api/query?"
+    raw  = "cat:" + " OR cat:".join(CATEGORIES)
+    sq   = quote_plus(raw)
+    url  = f"{base}search_query={sq}&sortBy=submittedDate&sortOrder=descending&start=0&max_results=200"
+    feed = feedparser.parse(url)
 
     cutoff = datetime.now(timezone.utc) - timedelta(days=DAYS_BACK)
-    new    = []
+    new     = []
+    seen_titles = set(processed_articles.keys())
+
     for e in feed.entries:
         title = e.title.strip()
-        if title in processed_articles:
+        if title in seen_titles:
             continue
-        dt  = datetime.strptime(e.published, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        dt = datetime.strptime(e.published, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
         if dt < cutoff:
             continue
         new.append({
@@ -84,7 +76,7 @@ def fetch_articles():
         })
     return new
 
-# ─────────────── 2) Prompt Block (GRUNDLAGEN) ───────────────
+# ─────────────── 2) Prompt Block (unverändert) ───────────────
 PROMPT = """
 You are a highly advanced scientific investment and technology radar specialized in Artificial Intelligence and decentralized data infrastructure.
 
@@ -141,9 +133,10 @@ def try_parse_json(text):
         )
         for idx, title, score, summary in pattern.findall(text):
             out.append({
-                "kurztitel": title.strip(),
-                "relevant": int(score),
-                "kurzfazit": summary.replace("\n"," ").strip()
+                "kurztitel":   title.strip(),
+                "relevant":    int(score),
+                "kurzfazit":   summary.strip(),
+                "key_figures": []
             })
         return out
 
@@ -164,74 +157,75 @@ def analyze(articles):
         content = resp.choices[0].message.content.strip()
         parsed  = try_parse_json(content)
         for rec, art in zip(parsed, batch):
-            rec["id"]       = art["id"]
-            rec["link"]     = art["link"]
+            rec["id"]   = art["id"]
+            rec["link"] = art["link"]
             rec.setdefault("kurztitel", art["title"])
             rec.setdefault("relevant", 0)
             rec.setdefault("kurzfazit", "")
+            rec.setdefault("key_figures", [])
         analyses.extend(parsed)
     return analyses
 
 # ─────────── 5) E-Mail versenden ───────────
-def send_email(analyses, articles):
+def send_email(analyses):
     msg = MIMEMultipart("alternative")
     msg["From"]    = EMAIL_ADDRESS
     msg["To"]      = EMAIL_RECEIVER
     msg["Subject"] = f"🧠 KI-Update {date.today()}"
 
-    # Relevanz ≥ RELEVANCE_CUTOFF
+    # Relevanz ≥ cutoff
     html = "<html><body>"
     html += f"<h2>🧠 Relevanz ≥ {RELEVANCE_CUTOFF}</h2>"
-    rel = sorted([a for a in analyses if a.get("relevant",0)>=RELEVANCE_CUTOFF], key=lambda x: x.get("relevant",0), reverse=True)
-    if rel:
-        for a in rel:
-            html += f'<h3><a href="{a.get("link")}">{a.get("kurztitel")}</a> (Score: {a.get("relevant")})</h3>'
-            html += f'<p>{a.get("kurzfazit")}</p>'
+    top = sorted([a for a in analyses if a["relevant"]>=RELEVANCE_CUTOFF],
+                 key=lambda x: x["relevant"], reverse=True)
+    if top:
+        for a in top:
+            html += (
+                f"<div><h3>{a['kurztitel']} (<b>{a['relevant']}</b>/10)</h3>"
+                f"<p>{a['kurzfazit']}</p>"
+                f"<a href='{a['link']}'>{a['link']}</a></div><hr>"
+            )
     else:
-        html += "<p>Keine relevanten Artikel gefunden.</p>"
+        html += "<p>Keine Artikel mit ausreichender Relevanz gefunden.</p>"
 
-    # Relevanz < RELEVANCE_CUTOFF
-    html += f"<hr><h2>🔍 Relevanz &lt; {RELEVANCE_CUTOFF}</h2>"
-    irr = [a for a in analyses if a.get("relevant",0)<RELEVANCE_CUTOFF]
-    if irr:
-        for a in irr:
-            html += f'<h3><a href="{a.get("link")}">{a.get("kurztitel")}</a> (Score: {a.get("relevant")})</h3>'
-            html += f'<p>{a.get("kurzfazit")}</p>'
-    else:
-        html += "<p>Keine irrelevanten Artikel.</p>"
-
+    html += "<h2>⚙️ Debug (alle geladenen Studien nach Score)</h2>"
+    for a in sorted(analyses, key=lambda x: x["relevant"], reverse=True):
+        html += (
+            f"<div><b>{a['kurztitel']}</b> (<i>{a['relevant']}/10</i>)<br>"
+            f"<a href='{a['link']}'>{a['link']}</a><br>"
+            f"<i>{a['kurzfazit']}</i></div>"
+        )
     html += "</body></html>"
 
     msg.attach(MIMEText(html, "html"))
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as s:
+        s.login(EMAIL_ADDRESS, EMAIL_APP_PW)
+        s.send_message(msg)
+        print("✅ E-Mail gesendet")
 
-    # SMTP
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-        server.login(EMAIL_ADDRESS, EMAIL_APP_PW)
-        server.sendmail(EMAIL_ADDRESS, EMAIL_RECEIVER, msg.as_string())
-
-# ─────────── Hauptprogramm ───────────
+# ───────── Hauptprogramm ─────────
 if __name__ == "__main__":
     articles = fetch_articles()
-
+    print(f"Neue Artikel: {len(articles)}")
     if not articles:
-        print("Keine neuen Artikel zum Analysieren gefunden.")
+        send_email([])
         sys.exit(0)
 
     analyses = analyze(articles)
 
-    # Speichere Analysen mit Titel als Schlüssel (zur Vermeidung von Duplikaten)
+    # Verarbeitet speichern: Titel als Key
     for a in analyses:
-        key = a['kurztitel']
-        processed_articles[key] = {
-            "id": a['id'],
-            "title": a['kurztitel'],
-            "relevant": a['relevant'],
-            "summary": a['kurzfazit']
+        processed_articles[a["kurztitel"]] = {
+            "id":       a["id"],
+            "title":    a["kurztitel"],
+            "relevant": a["relevant"],
+            "summary":  a["kurzfazit"]
         }
     save_processed(processed_articles)
 
-    send_email(analyses, articles)
-    print(f"✅ Fertig. {len(analyses)} Artikel analysiert, Ergebnisse gespeichert und E-Mail gesendet.")
+    send_email(analyses)
+    print(f"✅ Fertig. {len(analyses)} Artikel analysiert.")
+
 
 
 
