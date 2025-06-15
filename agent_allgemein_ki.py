@@ -49,6 +49,11 @@ DAYS_BACK        = 3
 BATCH_SIZE       = 5
 RELEVANCE_CUTOFF = 10
 
+# ─────────── Utility: speichere processed_articles ───────────
+def save_processed(data):
+    with open(output_path, "w") as f:
+        json.dump(data, f, indent=2)
+
 # ─────────────── 1) arXiv-Artikel holen ───────────────
 def fetch_articles():
     base = "http://export.arxiv.org/api/query?"
@@ -100,7 +105,7 @@ Focus on the presence and substantive discussion of the following core keywords 
   Blockweave architecture, Data availability sampling, Erasure coding, Proof-of-replication, Proof-of-spacetime, Proto-danksharding (EIP-4844),
   Filecoin Virtual Machine (FVM), Modular blockchain design, Layer-2 rollups, Zero-knowledge proofs (ZKP), Restaking models (e.g., EigenLayer),
   Cross-chain bridges, Oracle mechanisms (on-chain vs. off-chain), Decentralized identifiers (DID), Data DAOs, Incentive and token economics,
-  Content delivery via P2P (e.g., BTFS), Verifiable data provenance, Secure multiparty computation, Persistent archival storage,
+  Content delivery via P2P (e.g., BTFS), Verifiable data provenance, Secure Multiparty Computation, Persistent archival storage,
   AI data pipelines (data ingestion), Hybrid AI-human workflows, Data governance and compliance (e.g., GDPR), Developer ecosystem.
 
 Important:
@@ -125,13 +130,12 @@ def try_parse_json(text):
     try:
         return json.loads(text)
     except json.JSONDecodeError:
-        print("⚠️ JSON konnte nicht direkt geparst werden – Regex-Fallback wird verwendet.")
-        out = []
+        out    = []
         pattern = re.compile(
             r"(\d+)\.\s*Title:\s*(.*?)\n\s*(?:Relevance|Score|Rating|Bewertung)[^\d]*([0-9]+)\b.*?Fazit[:\s]*(.*?)(?=\n\d+\.|$)",
-            re.DOTALL | re.IGNORECASE
+            re.DOTALL|re.IGNORECASE
         )
-        for idx, title, score, summary in pattern.findall(text):
+        for _, title, score, summary in pattern.findall(text):
             out.append({
                 "kurztitel":   title.strip(),
                 "relevant":    int(score),
@@ -157,8 +161,8 @@ def analyze(articles):
         content = resp.choices[0].message.content.strip()
         parsed  = try_parse_json(content)
         for rec, art in zip(parsed, batch):
-            rec["id"]   = art["id"]
-            rec["link"] = art["link"]
+            rec["id"]       = art["id"]
+            rec["link"]     = art["link"]
             rec.setdefault("kurztitel", art["title"])
             rec.setdefault("relevant", 0)
             rec.setdefault("kurzfazit", "")
@@ -213,7 +217,7 @@ if __name__ == "__main__":
 
     analyses = analyze(articles)
 
-    # Verarbeitet speichern: Titel als Key
+    # 6) Verarbeitet speichern: Titel als Key
     for a in analyses:
         processed_articles[a["kurztitel"]] = {
             "id":       a["id"],
