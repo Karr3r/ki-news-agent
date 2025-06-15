@@ -19,23 +19,22 @@ jobs:
       - name: 📦 Checkout Repository
         uses: actions/checkout@v3
 
-      - name: 💾 Restore cached processed_articles.json
-        uses: actions/cache/restore@v4
-        id: restore_cache
+      - name: 💾 Cache Data folder
+        uses: actions/cache@v4
         with:
-          path: ./Data/processed_articles.json
-          key: processed-articles-cache-v1
+          path: Data
+          key: processed-articles-cache-v1-${{ runner.os }}-${{ github.run_id }}
           restore-keys: |
-            processed-articles-cache-
+            processed-articles-cache-v1-${{ runner.os }}-
 
-      - name: 🛠️ Fallback: Leere processed_articles.json, falls nicht vorhanden
+      - name: 🛠️ Ensure Data folder & file exists
         run: |
-          mkdir -p ./Data
-          if [ ! -f ./Data/processed_articles.json ]; then
-            echo "[]" > ./Data/processed_articles.json
-            echo "⚠️ Keine Datei im Cache gefunden. Leere Datei erzeugt."
+          mkdir -p Data
+          if [ ! -f Data/processed_articles.json ]; then
+            echo "{}" > Data/processed_articles.json
+            echo "⚠️ Keine vorhandene JSON gefunden – leere Datei erzeugt."
           else
-            echo "✅ processed_articles.json aus Cache oder Repo gefunden."
+            echo "✅ processed_articles.json vorhanden."
           fi
 
       - name: 🐍 Set up Python
@@ -49,14 +48,8 @@ jobs:
           pip install feedparser openai python-dotenv
 
       - name: 🤖 Run KI News Agent
-        run: |
-          python agent_allgemein_ki.py ./Data/processed_articles.json ./Data/processed_articles.json
+        run: python agent_allgemein_ki.py Data/processed_articles.json Data/processed_articles.json
 
-      - name: 💾 Save updated processed_articles.json to cache
-        uses: actions/cache/save@v4
-        with:
-          path: ./Data/processed_articles.json
-          key: processed-articles-cache-v1-${{ github.run_id }}
 
 
 
