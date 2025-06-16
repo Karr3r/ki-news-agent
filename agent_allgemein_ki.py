@@ -34,7 +34,8 @@ with open(input_path, "r") as f:
             processed_articles = {}
     except json.JSONDecodeError:
         processed_articles = {}
-
+# IDs der bereits verarbeiteten Artikel
+processed_ids = set(processed_articles.keys())
 # ──────────────── Konfiguration ────────────────
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -64,22 +65,25 @@ def fetch_articles():
 
     cutoff = datetime.now(timezone.utc) - timedelta(days=DAYS_BACK)
     new     = []
-    seen_titles = set(processed_articles.keys())
 
     for e in feed.entries:
-        title = e.title.strip()
-        if title in seen_titles:
+        arxiv_id = e.id.split("/")[-1]
+        if arxiv_id in processed_ids:
             continue
+
         dt = datetime.strptime(e.published, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
         if dt < cutoff:
             continue
+
         new.append({
-            "id":      e.id.split("/")[-1],
-            "title":   title,
-            "summary": e.summary.replace("\n"," ").strip(),
+            "id":      arxiv_id,
+            "title":   e.title.strip(),
+            "summary": e.summary.replace("\n", " ").strip(),
             "link":    e.link
         })
+
     return new
+
 
 # ─────────────── 2) Prompt Block (unverändert) ───────────────
 PROMPT = """
@@ -336,7 +340,7 @@ if __name__ == "__main__":
         }
     save_processed(processed_articles)
 
-    # 🔎 Debug: Wurden alle Artikel gespeichert?
+    # Debug: Wurden alle Artikel gespeichert?
     missing = [a for a in analyses if a["id"] not in processed_articles]
     if missing:
         print("⚠️ Nicht gespeicherte Artikel gefunden:")
