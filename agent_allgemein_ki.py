@@ -83,7 +83,7 @@ def fetch_articles():
 
 # ─────────────── 2) Prompt Block (unverändert) ───────────────
 PROMPT = """
-You are a highly advanced scientific investment & technology radar for artificial intelligence and decentralized data infrastructure. The user already holds €1,000 in off-chain storage tokens (FIL, STORJ, ASI/OCEAN, BTT, BZZ, SC) and on-chain data availability tokens (ETH, TIA, AVAIL, AR, NEAR). You are given a list of new studies (title + abstract) from peer-reviewed journals, conference papers (e.g. NeurIPS, ICLR, IEEE, ACM, SOSP, SIGCOMM), and preprints.
+You are a highly advanced scientific investment & technology radar for artificial intelligence and decentralized data infrastructure. The user already holds €1,000 in off-chain storage tokens (FIL, STORJ, ASI/OCEAN, BTT, BZZ, SC) and on-chain data availability tokens (ETH, TIA, AVAIL, AR, NEAR). You are given a list of 2 studies.
 
 ### 1. Goal of analysis
 Identify only studies with a **concrete connection to AI infrastructure** and **decentralized data processing**. General AI, model architecture, or cybersecurity studies without an infrastructure reference are **not relevant**.
