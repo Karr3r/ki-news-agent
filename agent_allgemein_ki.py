@@ -140,7 +140,6 @@ Relevance signals:
 - **caution**: Mere mentions of a keyword are not enough – evaluate substance.
 
 ### 4. Output format
-This line should appear directly after the title or abstract.
 Respond **exclusively** with a **JSON array**, no extra text.
 Each object must have:
 - "title": string
@@ -148,8 +147,8 @@ Each object must have:
 - "summary": string
 - "key_figures": array with up to two strings
 
+```markdown
 #### Example JSON output for 2 studies:
-```json
 [
   {
     "title": "Paper A Title",
