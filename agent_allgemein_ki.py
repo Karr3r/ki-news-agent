@@ -328,7 +328,7 @@ if __name__ == "__main__":
 
     # 6) Verarbeitet speichern: Titel als Key
     for a in analyses:
-        processed_articles[a["title"]] = {
+        processed_articles[a["id"]] = {
             "id":       a["id"],
             "title":    a["title"],
             "relevance": a["relevance"],
@@ -337,7 +337,7 @@ if __name__ == "__main__":
     save_processed(processed_articles)
 
     # 🔎 Debug: Wurden alle Artikel gespeichert?
-    missing = [a for a in analyses if a["title"] not in processed_articles]
+    missing = [a for a in analyses if a["id"] not in processed_articles]
     if missing:
         print("⚠️ Nicht gespeicherte Artikel gefunden:")
         for m in missing:
