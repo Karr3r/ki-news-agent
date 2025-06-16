@@ -254,7 +254,6 @@ def analyze(articles):
                 messages=[
                     {"role": "system", "content": PROMPT},
                     {"role": "user", "content": build_prompt([art])},
-                    {"role": "assistant", "content": original_content},
                     {"role": "user", "content": "Bitte gib die vollständige JSON-Analyse nur für diesen Artikel aus, ohne weitere Texte."},
                 ],
                 temperature=0.0,
