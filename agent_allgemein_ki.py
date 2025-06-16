@@ -206,6 +206,35 @@ def try_parse_json(text):
 
 # ───────── 4) Analyse in Batches ─────────
 def analyze(articles):
+    if len(articles) == 1:
+        art = articles[0]
+        print("⚠️ Nur ein Artikel – Einzelmodus aktiviert.")
+        resp = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": PROMPT},
+                {"role": "user", "content": build_prompt([art])},
+                {"role": "user", "content": "Bitte gib die vollständige JSON-Analyse nur für diesen Artikel aus, ohne weitere Texte."},
+            ],
+            temperature=0.0,
+        )
+        content = resp.choices[0].message.content.strip()
+        parsed = try_parse_json(content)
+
+        if isinstance(parsed, list) and len(parsed) == 1:
+            rec = parsed[0]
+            rec["id"] = art["id"]
+            rec["link"] = art["link"]
+            rec.setdefault("title", art["title"])
+            rec.setdefault("relevance", 0)
+            rec.setdefault("summary", "")
+            rec.setdefault("key_figures", [])
+            return [rec]
+        else:
+            print("❌ Einzelanalyse fehlgeschlagen")
+            print("Antwort:", content)
+            return []
+
     analyses = []
     failed_batches = []
 
