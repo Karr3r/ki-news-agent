@@ -203,39 +203,82 @@ def try_parse_json(text):
 # ───────── 4) Analyse in Batches ─────────
 def analyze(articles):
     analyses = []
+    failed_batches = []
+
+    total_batches = (len(articles) + BATCH_SIZE - 1) // BATCH_SIZE
+
     for i in range(0, len(articles), BATCH_SIZE):
+        batch_num = i // BATCH_SIZE + 1
         batch = articles[i:i+BATCH_SIZE]
-        print(f"Analysiere Batch {i//BATCH_SIZE+1}/{(len(articles)+BATCH_SIZE-1)//BATCH_SIZE+1}")
+        print(f"Analysiere Batch {batch_num}/{total_batches}")
+
         resp = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
-                {"role":"system","content": PROMPT},
-                {"role":"user",  "content": build_prompt(batch)}
+                {"role": "system", "content": PROMPT},
+                {"role": "user", "content": build_prompt(batch)},
             ],
-            temperature=0.2
+            temperature=0.2,
         )
         content = resp.choices[0].message.content.strip()
-        print("🔍 GPT-Antwort:\n", content)  # <-- GPT-Ausgabe anzeigen
+        print("🔍 GPT-Antwort:\n", content)  # Ausgabe GPT
+
         parsed = try_parse_json(content)
 
         if not isinstance(parsed, list):
-            print(f"⚠️  Warnung: GPT-Antwort ist kein JSON-Array, sondern: {type(parsed)}")
+            print(f"⚠️ Warnung: GPT-Antwort ist kein JSON-Array, sondern: {type(parsed)}")
             parsed = [parsed] if isinstance(parsed, dict) else []
 
         if len(parsed) != len(batch):
-            print(f"⚠️  Warnung: Erwartet {len(batch)} Artikel, aber nur {len(parsed)} geparsed.")
+            print(f"⚠️ Warnung: Erwartet {len(batch)} Artikel, aber nur {len(parsed)} geparsed.")
             print("🔎 GPT-Antwort war:")
             print(content)
+            failed_batches.append((batch, content))
+        else:
+            for rec, art in zip(parsed, batch):
+                rec["id"] = art["id"]
+                rec["link"] = art["link"]
+                rec.setdefault("title", art["title"])
+                rec.setdefault("relevance", 0)
+                rec.setdefault("summary", "")
+                rec.setdefault("key_figures", [])
+            analyses.extend(parsed)
 
-        for rec, art in zip(parsed, batch):
-            rec["id"]       = art["id"]
-            rec["link"]     = art["link"]
-            rec.setdefault("title", art["title"])
-            rec.setdefault("relevance", 0)
-            rec.setdefault("summary", "")
-            rec.setdefault("key_figures", [])
-        analyses.extend(parsed)
+    # Retry der fehlgeschlagenen Artikel - einzeln
+    for batch, original_content in failed_batches:
+        for art in batch:
+            print(f"⏳ Retry Artikel ID {art['id']} einzeln...")
+
+            retry_resp = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": PROMPT},
+                    {"role": "user", "content": build_prompt([art])},
+                    {"role": "assistant", "content": original_content},
+                    {"role": "user", "content": "Bitte gib die vollständige JSON-Analyse nur für diesen Artikel aus, ohne weitere Texte."},
+                ],
+                temperature=0.0,
+            )
+            retry_content = retry_resp.choices[0].message.content.strip()
+            print("🔍 Retry GPT-Antwort:\n", retry_content)
+
+            retry_parsed = try_parse_json(retry_content)
+
+            if isinstance(retry_parsed, list) and len(retry_parsed) == 1:
+                rec = retry_parsed[0]
+                rec["id"] = art["id"]
+                rec["link"] = art["link"]
+                rec.setdefault("title", art["title"])
+                rec.setdefault("relevance", 0)
+                rec.setdefault("summary", "")
+                rec.setdefault("key_figures", [])
+                analyses.append(rec)
+            else:
+                print(f"❌ Retry fehlgeschlagen für Artikel ID {art['id']}")
+                print(f"🔎 Retry-Antwort war:\n{retry_content}")
+
     return analyses
+
 
 # ─────────── 5) E-Mail versenden ───────────
 def send_email(analyses):
