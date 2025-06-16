@@ -206,6 +206,7 @@ def analyze(articles):
             temperature=0.2
         )
         content = resp.choices[0].message.content.strip()
+        print("🔍 GPT-Antwort:\n", content)  # <-- GPT-Ausgabe anzeigen
         parsed  = try_parse_json(content)
         for rec, art in zip(parsed, batch):
             rec["id"]       = art["id"]
