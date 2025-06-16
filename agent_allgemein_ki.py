@@ -207,7 +207,17 @@ def analyze(articles):
         )
         content = resp.choices[0].message.content.strip()
         print("🔍 GPT-Antwort:\n", content)  # <-- GPT-Ausgabe anzeigen
-        parsed  = try_parse_json(content)
+        parsed = try_parse_json(content)
+
+        if not isinstance(parsed, list):
+            print(f"⚠️  Warnung: GPT-Antwort ist kein JSON-Array, sondern: {type(parsed)}")
+            parsed = [parsed] if isinstance(parsed, dict) else []
+
+        if len(parsed) != len(batch):
+            print(f"⚠️  Warnung: Erwartet {len(batch)} Artikel, aber nur {len(parsed)} geparsed.")
+            print("🔎 GPT-Antwort war:")
+            print(content)
+
         for rec, art in zip(parsed, batch):
             rec["id"]       = art["id"]
             rec["link"]     = art["link"]
