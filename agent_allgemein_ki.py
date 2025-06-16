@@ -83,46 +83,87 @@ def fetch_articles():
 
 # ─────────────── 2) Prompt Block (unverändert) ───────────────
 PROMPT = """
-You are a highly advanced scientific investment and technology radar specialized in Artificial Intelligence and decentralized data infrastructure.
+You are a highly advanced scientific investment & technology radar for artificial intelligence and decentralized data infrastructure. The user already holds €1,000 in off-chain storage tokens (FIL, STORJ, ASI/OCEAN, BTT, BZZ, SC) and on-chain data availability tokens (ETH, TIA, AVAIL, AR, NEAR). You are given a list of new studies (title + abstract) from peer-reviewed journals, conference papers (e.g. NeurIPS, ICLR, IEEE, ACM, SOSP, SIGCOMM), and preprints.
 
-The user currently holds €1,000 in off-chain storage tokens (FIL, STORJ, ASI/OCEAN, BTT, BZZ, SC) and on-chain data availability tokens (ETH, TIA, AVAIL, AR, NEAR).
-
-You receive a list of new studies (each with title and abstract) from peer-reviewed journals, conference proceedings (e.g., NeurIPS, ICLR, IEEE, ACM, SOSP, SIGCOMM), and preprints.
-
-Analysis criteria:
-- Quantitative metrics: network adoption, storage volume, transaction counts, developer activity, token economics
-- Regulatory & compliance: e.g., MiCA, SEC frameworks
-- Market research & roadmaps: Messari, L2BEAT, DePIN Scan, project roadmaps
-- Emerging paradigms: zk-rollups, modular blockchain architectures, data DAOs, DePIN, AI-optimized infrastructure
+### 1. Goal of analysis
+Identify only studies with a **concrete connection to AI infrastructure** and **decentralized data processing**. General AI, model architecture, or cybersecurity studies without an infrastructure reference are **not relevant**.
 
 Your task:
-1. Assign each study a relevance score from 0 (irrelevant) to 10 (highest relevance) based on the above criteria, with a strict focus on real AI infrastructure and decentralized data processing. Studies only covering general AI, language models, or cybersecurity without clear infrastructure relevance should score low (0–3).
-2. Provide a concise 1–2 sentence summary explaining the relevance score.
-3. List up to two key figures (e.g., adoption rate, volume growth) as evidence supporting your rating.
+- Strictly evaluate each study based on its relevance to *decentralized AI infrastructure*, *data availability*, *storage networks*, *Data-DAOs*, *modular blockchains*, *AI-scalable architectures*, or *regulation of data infrastructure*.
 
-Focus on the presence and substantive discussion of the following core keywords and concepts:
-- Decentralized storage, Peer-to-peer networks (P2P protocols), Content addressing, Distributed hash tables (DHT), Merkle trees, Namespaced Merkle trees,
-  Blockweave architecture, Data availability sampling, Erasure coding, Proof-of-replication, Proof-of-spacetime, Proto-danksharding (EIP-4844),
-  Filecoin Virtual Machine (FVM), Modular blockchain design, Layer-2 rollups, Zero-knowledge proofs (ZKP), Restaking models (e.g., EigenLayer),
-  Cross-chain bridges, Oracle mechanisms (on-chain vs. off-chain), Decentralized identifiers (DID), Data DAOs, Incentive and token economics,
-  Content delivery via P2P (e.g., BTFS), Verifiable data provenance, Secure Multiparty Computation, Persistent archival storage,
-  AI data pipelines (data ingestion), Hybrid AI-human workflows, Data governance and compliance (e.g., GDPR), Developer ecosystem.
+### 2. Evaluation criteria
+Assign a score from **0 to 10** based on these categories:
+- **Technology & Infrastructure**: network adoption, storage volume, transaction metrics, developer activity, token economics
+- **Emerging paradigms**: ZK-Rollups, modular blockchain architectures, Data-DAOs, DePIN, Filecoin/FVM, AI-optimized infra
+- **Regulation & Compliance**: e.g. GDPR, SEC, MiCA, data governance
+- **Market data & roadmaps**: e.g. Messari, L2BEAT, DePIN Scan, developer ecosystems
 
-Important:
-- Only assign high scores (9–10) if the study contains direct and substantive technical relevance to AI infrastructure and decentralized data processing.
-- Do not assign "n/a" ratings; use 0 for no relevance.
-- Respond exclusively with a JSON array without any additional prose.
-- Each element must contain:
-  "kurztitel": "Short title of the study",
-  "relevant": 0–10,
-  "kurzfazit": "Concise summary explaining the score",
-  "key_figures": ["Optional key figure 1", "Optional key figure 2"]
+A study is only rated **9–10/10** if it is **directly technically relevant**. Pure LLM, NLP, defense/offense methods, or bioinformatics papers without infra relevance should receive **0–3**.
 
-  > **WICHTIG**:
-  > 1. Gib **ausschließlich** eine **gültige JSON‑Liste** zurück.
-  > 2. Die Liste **muss genau so viele Einträge** enthalten, wie Du Papers bekommen hast (z. B. 5).
-  > 3. **Keine** erklärenden Texte, Code‑Blöcke oder sonstigen Inhalte vor oder nach der JSON.
-  > 4. Sorge dafür, dass `json.loads()` die Ausgabe **ohne Fehler** parsen kann.
+### 3. Keyword-based relevance signals
+Use especially the following **30 key terms** to recognize and weigh papers automatically:
+
+Decentralized storage & infrastructure:
+- Decentralized storage
+- Peer-to-peer networks (P2P protocols)
+- Content-addressing
+- Distributed Hash Tables (DHT)
+- Merkle Trees / Namespaced Merkle Trees
+- Blockweave architecture
+- Data Availability Sampling
+- Erasure Coding
+- Proof-of-Replication / Proof-of-Spacetime
+- Proto-Danksharding (EIP-4844)
+- Filecoin Virtual Machine (FVM)
+- Modular blockchain design
+- Layer-2 Rollups
+- Zero-Knowledge-Proofs (ZKP)
+- Restaking models (e.g. EigenLayer)
+- Cross-chain bridges
+- Oracle mechanisms (on-chain vs. off-chain)
+- Decentralized Identifiers (DID)
+- Data-DAOs
+- Incentive and token economies
+- Content-delivery via P2P (e.g. BTFS)
+- Verifiable Data Provenance
+- Secure Multiparty Computation
+- Persistent archiving (Permanent Storage)
+- Developer ecosystems (GitHub activity, SDKs, APIs)
+
+AI & data processing:
+- AI data pipelines (Data ingestion)
+- Hybrid AI-human workflows
+- Data governance and compliance (e.g. GDPR conformity)
+
+Relevance signals:
+- **positive**: Studies focusing on these technologies or introducing new technical concepts get higher scores.
+- **caution**: Mere mentions of a keyword are not enough – evaluate substance.
+
+### 4. Output format
+This line should appear directly after the title or abstract.
+Respond **exclusively** with a **JSON array**, no extra text.
+Each object must have:
+- "kurztitel": string
+- "relevant": integer 0–10
+- "kurzfazit": string
+- "key_figures": array with up to two strings
+
+#### Example JSON output for 2 studies:
+```json
+[
+  {
+    "title": "Paper A Title",
+    "relevant": 8,
+    "summary": "Summary for paper A.",
+    "key_figures": ["Adoption: 20%", "Volume: 5 TB"]
+  },
+  {
+    "title": "Paper B Title",
+    "relevant": 3,
+    "summary": "Summary for paper B.",
+    "key_figures": []
+  }
+]
 
 """
 
@@ -228,9 +269,9 @@ if __name__ == "__main__":
     for a in analyses:
         processed_articles[a["kurztitel"]] = {
             "id":       a["id"],
-            "title":    a["kurztitel"],
+            "title":    a["title"],
             "relevant": a["relevant"],
-            "summary":  a["kurzfazit"]
+            "summary":  a["summary"]
         }
     save_processed(processed_articles)
 
