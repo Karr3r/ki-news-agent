@@ -117,6 +117,13 @@ Important:
   "relevant": 0–10,
   "kurzfazit": "Concise summary explaining the score",
   "key_figures": ["Optional key figure 1", "Optional key figure 2"]
+
+  > **WICHTIG**:
+  > 1. Gib **ausschließlich** eine **gültige JSON‑Liste** zurück.
+  > 2. Die Liste **muss genau so viele Einträge** enthalten, wie Du Papers bekommen hast (z. B. 5).
+  > 3. **Keine** erklärenden Texte, Code‑Blöcke oder sonstigen Inhalte vor oder nach der JSON.
+  > 4. Sorge dafür, dass `json.loads()` die Ausgabe **ohne Fehler** parsen kann.
+
 """
 
 def build_prompt(batch):
