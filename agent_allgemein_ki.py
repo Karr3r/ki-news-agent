@@ -46,7 +46,7 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 
 CATEGORIES       = ["cs.AI","cs.LG","cs.CR","cs.DC","cs.DB","cs.NI","cs.CY","stat.ML"]
 DAYS_BACK        = 3
-BATCH_SIZE       = 5
+BATCH_SIZE       = 3
 RELEVANCE_CUTOFF = 10
 
 # ─────────── Utility: speichere processed_articles ───────────
