@@ -185,9 +185,9 @@ def try_parse_json(text):
         )
         for _, title, score, summary in pattern.findall(text):
             out.append({
-                "kurztitel":   title.strip(),
+                "title":   title.strip(),
                 "relevant":    int(score),
-                "kurzfazit":   summary.strip(),
+                "summary":   summary.strip(),
                 "key_figures": []
             })
         return out
