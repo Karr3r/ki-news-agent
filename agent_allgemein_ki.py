@@ -143,9 +143,9 @@ Relevance signals:
 This line should appear directly after the title or abstract.
 Respond **exclusively** with a **JSON array**, no extra text.
 Each object must have:
-- "kurztitel": string
-- "relevant": integer 0–10
-- "kurzfazit": string
+- "title": string
+- "relevance": integer 0–10
+- "summary": string
 - "key_figures": array with up to two strings
 
 #### Example JSON output for 2 studies:
@@ -153,13 +153,13 @@ Each object must have:
 [
   {
     "title": "Paper A Title",
-    "relevant": 8,
+    "relevance": 8,
     "summary": "Summary for paper A.",
     "key_figures": ["Adoption: 20%", "Volume: 5 TB"]
   },
   {
     "title": "Paper B Title",
-    "relevant": 3,
+    "relevance": 3,
     "summary": "Summary for paper B.",
     "key_figures": []
   }
@@ -186,7 +186,7 @@ def try_parse_json(text):
         for _, title, score, summary in pattern.findall(text):
             out.append({
                 "title":   title.strip(),
-                "relevant":    int(score),
+                "relevance":    int(score),
                 "summary":   summary.strip(),
                 "key_figures": []
             })
@@ -211,9 +211,9 @@ def analyze(articles):
         for rec, art in zip(parsed, batch):
             rec["id"]       = art["id"]
             rec["link"]     = art["link"]
-            rec.setdefault("kurztitel", art["title"])
-            rec.setdefault("relevant", 0)
-            rec.setdefault("kurzfazit", "")
+            rec.setdefault("title", art["title"])
+            rec.setdefault("relevance", 0)
+            rec.setdefault("summary", "")
             rec.setdefault("key_figures", [])
         analyses.extend(parsed)
     return analyses
@@ -228,13 +228,13 @@ def send_email(analyses):
     # Relevanz ≥ cutoff
     html = "<html><body>"
     html += f"<h2>🧠 Relevanz ≥ {RELEVANCE_CUTOFF}</h2>"
-    top = sorted([a for a in analyses if a["relevant"]>=RELEVANCE_CUTOFF],
-                 key=lambda x: x["relevant"], reverse=True)
+    top = sorted([a for a in analyses if a["relevance"]>=RELEVANCE_CUTOFF],
+                 key=lambda x: x["relevance"], reverse=True)
     if top:
         for a in top:
             html += (
-                f"<div><h3>{a['kurztitel']} (<b>{a['relevant']}</b>/10)</h3>"
-                f"<p>{a['kurzfazit']}</p>"
+                f"<div><h3>{a['title']} (<b>{a['relevance']}</b>/10)</h3>"
+                f"<p>{a['summary']}</p>"
                 f"<a href='{a['link']}'>{a['link']}</a></div><hr>"
             )
     else:
@@ -243,9 +243,9 @@ def send_email(analyses):
     html += "<h2>⚙️ Debug (alle geladenen Studien nach Score)</h2>"
     for a in sorted(analyses, key=lambda x: x["relevant"], reverse=True):
         html += (
-            f"<div><b>{a['kurztitel']}</b> (<i>{a['relevant']}/10</i>)<br>"
+            f"<div><b>{a['title']}</b> (<i>{a['relevance']}/10</i>)<br>"
             f"<a href='{a['link']}'>{a['link']}</a><br>"
-            f"<i>{a['kurzfazit']}</i></div>"
+            f"<i>{a['summary']}</i></div>"
         )
     html += "</body></html>"
 
@@ -267,10 +267,10 @@ if __name__ == "__main__":
 
     # 6) Verarbeitet speichern: Titel als Key
     for a in analyses:
-        processed_articles[a["kurztitel"]] = {
+        processed_articles[a["title"]] = {
             "id":       a["id"],
             "title":    a["title"],
-            "relevant": a["relevant"],
+            "relevance": a["relevance"],
             "summary":  a["summary"]
         }
     save_processed(processed_articles)
