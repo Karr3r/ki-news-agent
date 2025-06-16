@@ -51,6 +51,11 @@ jobs:
         run: python agent_allgemein_ki.py Data/processed_articles.json Data/processed_articles.json
 
 
+      - name: 📤 Upload processed_articles.json als Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: processed-articles
+          path: Data/processed_articles.json
 
 
 
