@@ -174,22 +174,31 @@ def build_prompt(batch):
 
 # ─────────── 3) JSON-Fallback-Parsing ───────────
 def try_parse_json(text):
+    # 1) Komplett als JSON parsen
     try:
         return json.loads(text)
     except json.JSONDecodeError:
-        out    = []
-        pattern = re.compile(
-            r"(\d+)\.\s*Title:\s*(.*?)\n\s*(?:Relevance|Score|Rating|Bewertung)[^\d]*([0-9]+)\b.*?Fazit[:\s]*(.*?)(?=\n\d+\.|$)",
-            re.DOTALL|re.IGNORECASE
-        )
-        for _, title, score, summary in pattern.findall(text):
-            out.append({
-                "title":   title.strip(),
-                "relevance":    int(score),
-                "summary":   summary.strip(),
-                "key_figures": []
-            })
-        return out
+        pass
+
+    # 2) JSON aus ```json ... ``` extrahieren
+    match = re.search(r"```json\s*(.*?)```", text, re.DOTALL | re.IGNORECASE)
+    if match:
+        try:
+            return json.loads(match.group(1).strip())
+        except json.JSONDecodeError:
+            pass
+
+    # 3) JSON-Array aus Text extrahieren (erstes Vorkommen)
+    match = re.search(r"\[\s*\{.*?\}\s*\]", text, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group(0).strip())
+        except json.JSONDecodeError:
+            pass
+
+    # 4) Fallback: leer zurückgeben
+    return []
+
 
 # ───────── 4) Analyse in Batches ─────────
 def analyze(articles):
