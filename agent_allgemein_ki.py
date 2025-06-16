@@ -336,6 +336,15 @@ if __name__ == "__main__":
         }
     save_processed(processed_articles)
 
+    # 🔎 Debug: Wurden alle Artikel gespeichert?
+    missing = [a for a in analyses if a["title"] not in processed_articles]
+    if missing:
+        print("⚠️ Nicht gespeicherte Artikel gefunden:")
+        for m in missing:
+            print(f"- {m['title']} (ID: {m['id']})")
+    else:
+        print("✅ Alle Artikel wurden korrekt in processed_articles gespeichert.")
+
     send_email(analyses)
     print(f"✅ Fertig. {len(analyses)} Artikel analysiert.")
 
