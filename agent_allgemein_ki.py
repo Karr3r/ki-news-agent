@@ -241,7 +241,7 @@ def send_email(analyses):
         html += "<p>Keine Artikel mit ausreichender Relevanz gefunden.</p>"
 
     html += "<h2>⚙️ Debug (alle geladenen Studien nach Score)</h2>"
-    for a in sorted(analyses, key=lambda x: x["relevant"], reverse=True):
+    for a in sorted(analyses, key=lambda x: x["relevance"], reverse=True):
         html += (
             f"<div><b>{a['title']}</b> (<i>{a['relevance']}/10</i>)<br>"
             f"<a href='{a['link']}'>{a['link']}</a><br>"
