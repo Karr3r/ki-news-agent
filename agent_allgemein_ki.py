@@ -58,58 +58,56 @@ def save_processed(data):
 
 
 
-# ─────────────── 1) arXiv-Artikel holen (mit Retry) ───────────────
+# ─────────────── 1) arXiv‑Artikel holen mit Pagination ───────────────
 def fetch_articles():
-    base    = "http://export.arxiv.org/api/query?"
-    raw     = "cat:" + " OR cat:".join(CATEGORIES)
-    sq      = quote_plus(raw)
-    cutoff  = datetime.now(timezone.utc) - timedelta(days=DAYS_BACK)
-    new     = []
-    start   = 0
+    PAGE_SIZE = 200   # wie viele Einträge pro Request
+    MAX_RESULTS = 1000  # Maximal 1000 insgesamt (kann beliebig erhöht werden)
+    base     = "http://export.arxiv.org/api/query?"
+    raw      = "cat:" + " OR cat:".join(CATEGORIES)
+    sq       = quote_plus(raw)
+    cutoff   = datetime.now(timezone.utc) - timedelta(days=DAYS_BACK)
+    new      = []
+    processed = processed_ids.copy()
 
-    while True:
-        url = (
+    # Schleife über alle Seiten
+    for start in range(0, MAX_RESULTS, PAGE_SIZE):
+        url  = (
             f"{base}"
             f"search_query={sq}"
             f"&sortBy=submittedDate&sortOrder=descending"
-            f"&start={start}&max_results=200"
+            f"&start={start}&max_results={PAGE_SIZE}"
         )
 
-        # Bis zu 3 Versuche, Netzwerkfehler abfangen
-        for attempt in range(3):
-            try:
-                feed = feedparser.parse(url)
-                break
-            except Exception as e:
-                print(f"⚠️ Fehler beim Abrufen von {url}: {e} (Versuch {attempt+1}/3)")
-                time.sleep(2)
-        else:
-            print(f"❌ Nach 3 Versuchen Fehlermeldung, breche Pagination ab.")
-            return new
+        feed = feedparser.parse(url)
+        if not feed.entries:
+            break  # keine weiteren Einträge
 
-        entries = getattr(feed, "entries", [])
-        if not entries:
-            break
-
-        for e in entries:
-            aid = e.id.split("/")[-1]
-            dt  = datetime.strptime(e.published, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-            if dt < cutoff or aid in processed_ids:
+        for e in feed.entries:
+            arxiv_id = e.id.split("/")[-1]
+            # bereits verarbeitet?
+            if arxiv_id in processed:
                 continue
+
+            # Veröffentlichungsdatum prüfen
+            dt = datetime.strptime(e.published, "%Y-%m-%dT%H:%M:%SZ") \
+                     .replace(tzinfo=timezone.utc)
+            if dt < cutoff:
+                # da sortOrder=descending, können wir hier abbrechen:
+                return new
+
+            # neuen Artikel einsammeln
             new.append({
-                "id":      aid,
+                "id":      arxiv_id,
                 "title":   e.title.strip(),
-                "summary": e.summary.replace("\n"," ").strip(),
+                "summary": e.summary.replace("\n", " ").strip(),
                 "link":    e.link
             })
 
-        if len(entries) < 200:
-            break
-
-        start += 200
+        # kleine Pause, um API nicht zu überlasten (optional)
         time.sleep(1)
 
     return new
+
 
 
 
