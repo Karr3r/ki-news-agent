@@ -387,7 +387,7 @@ if __name__ == "__main__":
         save_processed(processed_articles)
 
     articles = fetch_articles()
-    print(f"Neue Artikel: {len(articles)}"
+    print(f"Neue Artikel: {len(articles)}")
 
     if not articles:
         send_email([])
