@@ -48,7 +48,7 @@ jobs:
           pip install feedparser openai python-dotenv
 
       - name: 🤖 Run KI News Agent
-        run: python agent_allgemein_ki.py Data/processed_articles.json Data/processed_articles.json
+        run: python agent_allgemein_ki.py Data/processed_articles.json Data/processed_articles.json --reset
 
 
       - name: 📤 Upload processed_articles.json als Artifact
