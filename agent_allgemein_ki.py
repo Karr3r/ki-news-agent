@@ -6,6 +6,7 @@ import json
 import sys
 import feedparser
 import smtplib
+import time
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from datetime import datetime, timedelta, timezone, date
