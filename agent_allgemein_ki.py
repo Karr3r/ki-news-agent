@@ -380,8 +380,15 @@ def send_email(analyses):
 
 # ───────── Hauptprogramm ─────────
 if __name__ == "__main__":
+    # Optional: Reset processed storage
+    if len(sys.argv) > 3 and sys.argv[3] == "--reset":
+        print("🗑️ Reset flag erkannt: Leere processed_articles.json wird zurückgesetzt.")
+        processed_articles.clear()
+        save_processed(processed_articles)
+
     articles = fetch_articles()
-    print(f"Neue Artikel: {len(articles)}")
+    print(f"Neue Artikel: {len(articles)}"
+
     if not articles:
         send_email([])
         sys.exit(0)
