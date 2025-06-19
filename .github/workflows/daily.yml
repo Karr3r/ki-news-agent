@@ -23,9 +23,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: Data
-          key: processed-articles-cache-v1-${{ runner.os }}-${{ github.run_id }}
+          key: processed-articles-cache-v2-${{ runner.os }}-${{ github.run_id }}
           restore-keys: |
-            processed-articles-cache-v1-${{ runner.os }}-
+            processed-articles-cache-v2-${{ runner.os }}-
 
       - name: 🛠️ Ensure Data folder & file exists
         run: |
