@@ -55,34 +55,47 @@ def save_processed(data):
     with open(output_path, "w") as f:
         json.dump(data, f, indent=2)
 
-# ─────────────── 1) arXiv-Artikel holen ───────────────
+# ─────────────── 1) arXiv-Artikel holen (mit Pagination) ───────────────
 def fetch_articles():
-    base = "http://export.arxiv.org/api/query?"
-    raw  = "cat:" + " OR cat:".join(CATEGORIES)
-    sq   = quote_plus(raw)
-    url  = f"{base}search_query={sq}&sortBy=submittedDate&sortOrder=descending&start=0&max_results=200"
-    feed = feedparser.parse(url)
-
-    cutoff = datetime.now(timezone.utc) - timedelta(days=DAYS_BACK)
+    base    = "http://export.arxiv.org/api/query?"
+    raw     = "cat:" + " OR cat:".join(CATEGORIES)
+    sq      = quote_plus(raw)
+    cutoff  = datetime.now(timezone.utc) - timedelta(days=DAYS_BACK)
     new     = []
+    start   = 0
 
-    for e in feed.entries:
-        arxiv_id = e.id.split("/")[-1]
-        if arxiv_id in processed_ids:
-            continue
+    while True:
+        url = (f"{base}"
+               f"search_query={sq}"
+               f"&sortBy=submittedDate&sortOrder=descending"
+               f"&start={start}&max_results=200")
+        feed = feedparser.parse(url)
 
-        dt = datetime.strptime(e.published, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-        if dt < cutoff:
-            continue
+        # Keine neuen Einträge mehr → abbrechen
+        if not feed.entries:
+            break
 
-        new.append({
-            "id":      arxiv_id,
-            "title":   e.title.strip(),
-            "summary": e.summary.replace("\n", " ").strip(),
-            "link":    e.link
-        })
+        for e in feed.entries:
+            aid   = e.id.split("/")[-1]
+            dt    = datetime.strptime(e.published, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+            if dt < cutoff or aid in processed_ids:
+                continue
+            new.append({
+                "id":      aid,
+                "title":   e.title.strip(),
+                "summary": e.summary.replace("\n"," ").strip(),
+                "link":    e.link
+            })
+
+        # Wenn weniger als 200 zurückkamen, war's die letzte Seite
+        if len(feed.entries) < 200:
+            break
+
+        start += 200
+        time.sleep(1)  # kurz pausieren, um arXiv nicht zu überlasten
 
     return new
+
 
 
 # ─────────────── 2) Prompt Block (unverändert) ───────────────
