@@ -47,7 +47,7 @@ EMAIL_RECEIVER = os.getenv("EMAIL_RECEIVER")
 client = OpenAI(api_key=OPENAI_API_KEY)
 
 CATEGORIES       = ["cs.AI","cs.LG","cs.CR","cs.DC","cs.DB","cs.NI","cs.CY","stat.ML"]
-DAYS_BACK        = 2
+DAYS_BACK        = 3
 BATCH_SIZE       = 2
 RELEVANCE_CUTOFF = 9
 
