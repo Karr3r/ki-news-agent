@@ -203,29 +203,35 @@ def build_prompt(batch):
         text.append(f"{i}. Title: {art['title']}\n   Abstract: {art['summary']}")
     return PROMPT + "\n\n" + "\n\n".join(text)
 
-# ─────────── 3) JSON-Fallback-Parsing ───────────
 def try_parse_json(text):
-    # Markdown-Fences entfernen, falls vorhanden
-    # z.B. ```json … ``` oder ``` … ```
-    text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
-    text = re.sub(r"\s*```$", "", text)
+    # 0) Whitespace und Code-Fences entfernen
+    txt = text.strip()
+    # falls die Ausgabe in ```json ... ``` war, kappen wir’s raus
+    if txt.lower().startswith("```json"):
+        txt = re.sub(r"^```json\s*|\s*```$", "", txt, flags=re.IGNORECASE).strip()
+    elif txt.startswith("```") and txt.endswith("```"):
+        txt = txt.strip("```").strip()
 
-    # 1) Komplett als JSON parsen
+    # 1) Clean-Text direkt als JSON
     try:
-        return json.loads(text)
+        return json.loads(txt)
     except json.JSONDecodeError:
         pass
 
-    # 2) JSON-Array aus dem Text extrahieren (erstes Vorkommen)
-    match = re.search(r"\[\s*\{.*?\}\s*\]", text, re.DOTALL)
+    # 2) JSON-Array komplett im Text suchen (erstes Auftreten von '[' ... ']')
+    match = re.search(r"\[\s*\{.*?\}\s*\]", txt, re.DOTALL)
     if match:
         try:
             return json.loads(match.group(0))
         except json.JSONDecodeError:
             pass
 
-    # 3) Fallback: leer zurückgeben
+    # 3) Sonstige Regex-Fälle (falls nötig)
+    #    z.B. Titel/Fazit-Extraktion, bleibt wie gehabt...
+
+    # 4) Fallback: leer zurückliefern
     return []
+
 
 
 # ───────── 4) Analyse in Batches (inkl. Einzelartikel) ─────────
