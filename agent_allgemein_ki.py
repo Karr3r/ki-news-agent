@@ -206,32 +206,31 @@ def build_prompt(batch):
 
 
 def try_parse_json(text):
-    # 0) Whitespace & mögliche ```json```-Fences entfernen
-    txt = text.strip()
-    # Entferne führende/trailing ```json oder ```
-    if txt.lower().startswith("```json"):
-        txt = re.sub(r"^```json\s*|\s*```$", "", txt, flags=re.IGNORECASE).strip()
-    elif txt.startswith("```") and txt.endswith("```"):
-        txt = txt[3:-3].strip()
+    # 0) Entferne Markdown-Code-Fences komplett
+    #    z.B. ```json [...]``` oder ```[...]\n``` werden hier entfernt
+    text = re.sub(r"```(?:json)?", "", text)
 
-    # 1) Clean-Text direkt als JSON parsen
+    # 1) Whitespace trimmen
+    text = text.strip()
+
+    # 2) Komplett als JSON parsen
     try:
-        return json.loads(txt)
+        return json.loads(text)
     except json.JSONDecodeError:
         pass
 
-    # 2) Erstes JSON-Array im Text extrahieren und parsen
-    match = re.search(r"\[\s*\{.*?\}\s*\]", txt, re.DOTALL)
+    # 3) JSON-Array aus Text extrahieren (erstes Vorkommen)
+    match = re.search(r"\[\s*\{.*?\}\s*\]", text, re.DOTALL)
     if match:
+        snippet = match.group(0)
         try:
-            return json.loads(match.group(0))
+            return json.loads(snippet)
         except json.JSONDecodeError:
             pass
 
-    # 3) (Optional) Weitere Regex-Fallbacks hier, falls nötig
-
-    # 4) Wenn alles scheitert: leeres Array
+    # 4) Fallback: leer zurückgeben
     return []
+
 
 
 
