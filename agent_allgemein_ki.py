@@ -241,19 +241,18 @@ def analyze(articles):
     analyses = []
     failed_batches = []
 
-    # wir fassen Einzelfall nicht mehr extra ab,
-    # sondern laufen einfach mit batch_size über 1+ Artikel
     total_batches = (len(articles) + BATCH_SIZE - 1) // BATCH_SIZE
+
     for i in range(0, len(articles), BATCH_SIZE):
         batch_num = i // BATCH_SIZE + 1
-        batch = articles[i:i + BATCH_SIZE]
-        print(f"Analysiere Batch {batch_num}/{total_batches} ({len(batch)} Artikel)")
+        batch = articles[i:i+BATCH_SIZE]
+        print(f"Analysiere Batch {batch_num}/{total_batches}")
 
         resp = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
-                {"role": "system", "content": PROMPT},
-                {"role": "user",   "content": build_prompt(batch)},
+                {"role": "system",  "content": PROMPT},
+                {"role": "user",    "content": build_prompt(batch)},
             ],
             temperature=0.2,
         )
@@ -261,52 +260,65 @@ def analyze(articles):
         print("🔍 GPT-Antwort:\n", content)
 
         parsed = try_parse_json(content)
-        print(f"📦 Geparst: {len(parsed)} Objekte")
-
-        # falls parsed kein List ist, standardisieren
         if not isinstance(parsed, list):
+            print(f"⚠️ Warnung: GPT-Antwort ist kein JSON-Array, sondern: {type(parsed)}")
             parsed = [parsed] if isinstance(parsed, dict) else []
 
         if len(parsed) != len(batch):
             print(f"⚠️ Warnung: Erwartet {len(batch)} Artikel, aber nur {len(parsed)} geparsed.")
             failed_batches.append((batch, content))
-            # trotzdem die, die wir haben, übernehmen
-        for rec, art in zip(parsed, batch):
-            rec["id"]       = art["id"]
-            rec["link"]     = art["link"]
-            rec.setdefault("title",      art["title"])
-            rec.setdefault("relevance",  0)
-            rec.setdefault("summary",    "")
-            rec.setdefault("key_figures",[])
-            analyses.append(rec)
-
-    # Retry fehlgeschlagener Einzelartikel
-    for batch, original in failed_batches:
-        for art in batch:
-            print(f"⏳ Retry Artikel ID {art['id']} einzeln…")
-            retry = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {"role": "system",  "content": PROMPT},
-                    {"role": "user",    "content": build_prompt([art])},
-                    {"role": "user",    "content": "Bitte liefere nur die JSON-Antwort für genau diesen einen Artikel."},
-                ],
-                temperature=0.0,
-            )
-            rc = retry.choices[0].message.content.strip()
-            print("🔍 Retry-Antwort:\n", rc)
-            rp = try_parse_json(rc)
-            if isinstance(rp, list) and len(rp) == 1:
-                rec = rp[0]
-                rec["id"]   = art["id"]
-                rec["link"] = art["link"]
+        else:
+            for rec, art in zip(parsed, batch):
+                rec.update({
+                    "id":       art["id"],
+                    "link":     art["link"],
+                })
                 rec.setdefault("title", art["title"])
                 rec.setdefault("relevance", 0)
                 rec.setdefault("summary", "")
-                rec.setdefault("key_figures",[])
+                rec.setdefault("key_figures", [])
+            analyses.extend(parsed)
+
+    # Retry der fehlgeschlagenen Artikel – einzeln
+    for batch, original_content in failed_batches:
+        for art in batch:
+            # Extrahiere ursprüngliches Rating
+            m = re.search(r'"relevance"\s*:\s*([0-9]+)', original_content)
+            old_score = m.group(1) if m else None
+
+            print(f"⏳ Retry Artikel ID {art['id']} einzeln (orig. score={old_score})...")
+
+            retry_resp = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system",    "content": PROMPT},
+                    {"role": "user",      "content": build_prompt([art])},
+                    {"role": "assistant", "content": original_content},
+                    {"role": "user",      "content": (
+                        f"Die obige Analyse lag bei relevance={old_score}. "
+                        "Bitte bestätige oder korrigiere diesen Wert im JSON-Array."
+                    )},
+                ],
+                temperature=0.2,
+            )
+            retry_content = retry_resp.choices[0].message.content.strip()
+            print("🔍 Retry GPT-Antwort:\n", retry_content)
+
+            retry_parsed = try_parse_json(retry_content)
+            if isinstance(retry_parsed, list) and len(retry_parsed) == 1:
+                rec = retry_parsed[0]
+                rec.update({
+                    "id":   art["id"],
+                    "link": art["link"],
+                })
+                rec.setdefault("title", art["title"])
+                rec.setdefault("relevance", 0)
+                rec.setdefault("summary", "")
+                rec.setdefault("key_figures", [])
                 analyses.append(rec)
             else:
-                print(f"❌ Retry fehlgeschlagen für ID {art['id']}")
+                print(f"❌ Retry fehlgeschlagen für Artikel ID {art['id']}")
+                print("🔎 Retry-Antwort war:\n", retry_content)
 
     return analyses
 
