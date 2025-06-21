@@ -245,8 +245,14 @@ def analyze(articles):
             ],
             temperature=0.0,
         )
-        content = resp.choices[0].message.content.strip()
-        parsed = try_parse_json(content)
+        content = resp.choices[0].message.content
+        if isinstance(content, str):
+            content = content.strip()
+            parsed = try_parse_json(content)
+        else:
+            parsed = content  # direkt verwendbar
+
+
 
         if isinstance(parsed, list) and len(parsed) == 1:
             rec = parsed[0]
