@@ -47,7 +47,7 @@ EMAIL_RECEIVER = os.getenv("EMAIL_RECEIVER")
 client = OpenAI(api_key=OPENAI_API_KEY)
 
 CATEGORIES       = ["cs.AI","cs.LG","cs.CR","cs.DC","cs.DB","cs.NI","cs.CY","stat.ML"]
-DAYS_BACK        = 15
+DAYS_BACK        = 7
 BATCH_SIZE       = 2
 RELEVANCE_CUTOFF = 9
 
@@ -61,7 +61,7 @@ def save_processed(data):
 # ─────────────── 1) arXiv‑Artikel holen mit Pagination ───────────────
 def fetch_articles():
     PAGE_SIZE = 200   # wie viele Einträge pro Request
-    MAX_RESULTS = 1000  # Maximal 1000 insgesamt (kann beliebig erhöht werden)
+    MAX_RESULTS = 2000  # Maximal 1000 insgesamt (kann beliebig erhöht werden)
     base     = "http://export.arxiv.org/api/query?"
     raw      = "cat:" + " OR cat:".join(CATEGORIES)
     sq       = quote_plus(raw)
