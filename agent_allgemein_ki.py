@@ -204,32 +204,34 @@ def build_prompt(batch):
     return PROMPT + "\n\n" + "\n\n".join(text)
 
 
+#3 parsing
+
 
 def try_parse_json(text):
-    # 0) Entferne Markdown-Code-Fences komplett
-    #    z.B. ```json [...]``` oder ```[...]\n``` werden hier entfernt
-    text = re.sub(r"```(?:json)?", "", text)
+    # 0) Markdown-Fences entfernen
+    text = re.sub(r"```(?:json)?", "", text, flags=re.IGNORECASE)
 
     # 1) Whitespace trimmen
     text = text.strip()
 
-    # 2) Komplett als JSON parsen
+    # 2) Versuch: komplettes Textstück parsen
     try:
         return json.loads(text)
     except json.JSONDecodeError:
         pass
 
-    # 3) JSON-Array aus Text extrahieren (erstes Vorkommen)
-    match = re.search(r"\[\s*\{.*?\}\s*\]", text, re.DOTALL)
-    if match:
-        snippet = match.group(0)
+    # 3) Greedy-Extraktion: alles von [ bis zum letzten ]
+    m = re.search(r"\[.*\]", text, flags=re.DOTALL)
+    if m:
+        snippet = m.group(0)
         try:
             return json.loads(snippet)
         except json.JSONDecodeError:
             pass
 
-    # 4) Fallback: leer zurückgeben
+    # 4) Fallback: leeres Array
     return []
+
 
 
 
