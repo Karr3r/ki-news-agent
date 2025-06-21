@@ -205,29 +205,26 @@ def build_prompt(batch):
 
 # ─────────── 3) JSON-Fallback-Parsing ───────────
 def try_parse_json(text):
+    # Markdown-Fences entfernen, falls vorhanden
+    # z.B. ```json … ``` oder ``` … ```
+    text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s*```$", "", text)
+
     # 1) Komplett als JSON parsen
     try:
         return json.loads(text)
     except json.JSONDecodeError:
         pass
 
-    # 2) JSON aus ```json ... ``` extrahieren
-    match = re.search(r"```json\s*(.*?)```", text, re.DOTALL | re.IGNORECASE)
-    if match:
-        try:
-            return json.loads(match.group(1).strip())
-        except json.JSONDecodeError:
-            pass
-
-    # 3) JSON-Array aus Text extrahieren (erstes Vorkommen)
+    # 2) JSON-Array aus dem Text extrahieren (erstes Vorkommen)
     match = re.search(r"\[\s*\{.*?\}\s*\]", text, re.DOTALL)
     if match:
         try:
-            return json.loads(match.group(0).strip())
+            return json.loads(match.group(0))
         except json.JSONDecodeError:
             pass
 
-    # 4) Fallback: leer zurückgeben
+    # 3) Fallback: leer zurückgeben
     return []
 
 
