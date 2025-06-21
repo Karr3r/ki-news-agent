@@ -203,22 +203,24 @@ def build_prompt(batch):
         text.append(f"{i}. Title: {art['title']}\n   Abstract: {art['summary']}")
     return PROMPT + "\n\n" + "\n\n".join(text)
 
+
+
 def try_parse_json(text):
-    # 0) Whitespace und Code-Fences entfernen
+    # 0) Whitespace & mögliche ```json```-Fences entfernen
     txt = text.strip()
-    # falls die Ausgabe in ```json ... ``` war, kappen wir’s raus
+    # Entferne führende/trailing ```json oder ```
     if txt.lower().startswith("```json"):
         txt = re.sub(r"^```json\s*|\s*```$", "", txt, flags=re.IGNORECASE).strip()
     elif txt.startswith("```") and txt.endswith("```"):
-        txt = txt.strip("```").strip()
+        txt = txt[3:-3].strip()
 
-    # 1) Clean-Text direkt als JSON
+    # 1) Clean-Text direkt als JSON parsen
     try:
         return json.loads(txt)
     except json.JSONDecodeError:
         pass
 
-    # 2) JSON-Array komplett im Text suchen (erstes Auftreten von '[' ... ']')
+    # 2) Erstes JSON-Array im Text extrahieren und parsen
     match = re.search(r"\[\s*\{.*?\}\s*\]", txt, re.DOTALL)
     if match:
         try:
@@ -226,11 +228,11 @@ def try_parse_json(text):
         except json.JSONDecodeError:
             pass
 
-    # 3) Sonstige Regex-Fälle (falls nötig)
-    #    z.B. Titel/Fazit-Extraktion, bleibt wie gehabt...
+    # 3) (Optional) Weitere Regex-Fallbacks hier, falls nötig
 
-    # 4) Fallback: leer zurückliefern
+    # 4) Wenn alles scheitert: leeres Array
     return []
+
 
 
 
