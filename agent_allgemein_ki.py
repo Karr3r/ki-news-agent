@@ -47,7 +47,7 @@ EMAIL_RECEIVER = os.getenv("EMAIL_RECEIVER")
 client = OpenAI(api_key=OPENAI_API_KEY)
 
 CATEGORIES       = ["cs.AI","cs.LG","cs.CR","cs.DC","cs.DB","cs.NI","cs.CY","stat.ML"]
-DAYS_BACK        = 9
+DAYS_BACK        = 8
 BATCH_SIZE       = 2
 RELEVANCE_CUTOFF = 9
 
@@ -62,59 +62,43 @@ def save_processed(data):
 
 
 def fetch_articles():
-    PAGE_SIZE   = 200    # Einträge pro Request
-    MAX_RESULTS = 3000   # Maximal insgesamt (kann bei Bedarf erhöht werden)
-    base        = "http://export.arxiv.org/api/query?"
-    raw         = "cat:" + " OR cat:".join(CATEGORIES)
-    sq          = quote_plus(raw)
-    cutoff      = datetime.now(timezone.utc) - timedelta(days=DAYS_BACK)
-    new         = []
-    processed   = processed_ids.copy()
+    # 1) Zeitfenster als arXiv-Date‐Range
+    now       = datetime.now(timezone.utc)
+    cutoff    = now - timedelta(days=DAYS_BACK)
+    start_str = cutoff.strftime("%Y%m%d000000")
+    end_str   = now.strftime("%Y%m%d235959")
 
-    # Schleife über alle Seiten
-    for start in range(0, MAX_RESULTS, PAGE_SIZE):
-        url  = (
-            f"{base}"
-            f"search_query={sq}"
-            f"&sortBy=submittedDate&sortOrder=descending"
-            f"&start={start}&max_results={PAGE_SIZE}"
-        )
-        feed = feedparser.parse(url)
-        if not feed.entries:
-            break  # keine weiteren Einträge vorhanden
+    # 2) Query mit Kategorie- und Datums‐Filter
+    cats      = " OR ".join(f"cat:{c}" for c in CATEGORIES)
+    date_rng  = f"submittedDate:[{start_str} TO {end_str}]"
+    raw_query = f"({cats}) AND {date_rng}"
+    sq        = quote_plus(raw_query)
 
-        any_new_this_page = False
+    # 3) URL mit ausreichend hohem max_results
+    url = (
+        "http://export.arxiv.org/api/query?"
+        f"search_query={sq}"
+        "&sortBy=submittedDate"
+        "&sortOrder=descending"
+        "&start=0"
+        "&max_results=1000"
+    )
 
-        for e in feed.entries:
-            dt = datetime.strptime(e.published, "%Y-%m-%dT%H:%M:%SZ") \
-                     .replace(tzinfo=timezone.utc)
-            if dt < cutoff:
-                # Dieser einzelne Artikel ist zu alt, überspringen
-                continue
+    # 4) Abruf und Parsen
+    feed = feedparser.parse(url)
+    new_articles = []
+    for e in feed.entries:
+        arxiv_id = e.id.split("/")[-1]
+        if arxiv_id in processed_ids:
+            continue
+        new_articles.append({
+            "id":      arxiv_id,
+            "title":   e.title.strip(),
+            "summary": e.summary.replace("\n", " ").strip(),
+            "link":    e.link
+        })
 
-            arxiv_id = e.id.split("/")[-1]
-            if arxiv_id in processed:
-                # Bereits verarbeitet
-                continue
-
-            # Wir haben hier mindestens einen gültigen Artikel
-            any_new_this_page = True
-
-            new.append({
-                "id":      arxiv_id,
-                "title":   e.title.strip(),
-                "summary": e.summary.replace("\n", " ").strip(),
-                "link":    e.link
-            })
-
-        if not any_new_this_page:
-            # Auf dieser Seite gab es keinen einzigen neuen Artikel mehr
-            # — wir sind durch den Zeitraum, also abbrechen
-            break
-
-        time.sleep(1)  # Schonung der API
-
-    return new
+    return new_articles
 
 
 
