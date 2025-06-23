@@ -47,7 +47,7 @@ EMAIL_RECEIVER = os.getenv("EMAIL_RECEIVER")
 client = OpenAI(api_key=OPENAI_API_KEY)
 
 CATEGORIES       = ["cs.AI","cs.LG","cs.CR","cs.DC","cs.DB","cs.NI","cs.CY","stat.ML"]
-DAYS_BACK        = 8
+DAYS_BACK        = 9
 BATCH_SIZE       = 2
 RELEVANCE_CUTOFF = 9
 
@@ -63,7 +63,7 @@ def save_processed(data):
 
 def fetch_articles():
     PAGE_SIZE   = 200    # Einträge pro Request
-    MAX_RESULTS = 2000   # Maximal insgesamt (kann bei Bedarf erhöht werden)
+    MAX_RESULTS = 3000   # Maximal insgesamt (kann bei Bedarf erhöht werden)
     base        = "http://export.arxiv.org/api/query?"
     raw         = "cat:" + " OR cat:".join(CATEGORIES)
     sq          = quote_plus(raw)
