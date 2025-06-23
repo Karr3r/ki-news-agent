@@ -81,7 +81,7 @@ def fetch_articles():
         "&sortBy=submittedDate"
         "&sortOrder=descending"
         "&start=0"
-        "&max_results=2000"
+        "&max_results=2500"
     )
 
     # 4) Abruf und Parsen
