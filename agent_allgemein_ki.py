@@ -62,53 +62,55 @@ def save_processed(data):
 
 
 def fetch_articles():
-    batch_size = 2750
-    start = 0
+    now       = datetime.now(timezone.utc)
+    cutoff    = now - timedelta(days=DAYS_BACK)
+    start_str = cutoff.strftime("%Y%m%d000000")
+    end_str   = now.strftime("%Y%m%d235959")
+
+    cats      = " OR ".join(f"cat:{c}" for c in CATEGORIES)
+    date_rng  = f"submittedDate:[{start_str} TO {end_str}]"
+    raw_query = f"({cats}) AND {date_rng}"
+    sq        = quote_plus(raw_query)
+
+    BATCH_SIZE = 1000
+    start_index = 0
     new_articles = []
 
-    # 1) Nur Kategorien in Query – kein submittedDate-Filter!
-    cats = " OR ".join(f"cat:{c}" for c in CATEGORIES)
-    sq = quote_plus(f"({cats})")
-
-    # 2) Zeitgrenze lokal berechnen
-    now = datetime.now(timezone.utc)
-    cutoff = now - timedelta(days=DAYS_BACK)
-
-    # 3) Pagination-Schleife
     while True:
         url = (
             "http://export.arxiv.org/api/query?"
             f"search_query={sq}"
             "&sortBy=submittedDate"
             "&sortOrder=descending"
-            f"&start={start}"
-            f"&max_results={batch_size}"
+            f"&start={start_index}"
+            f"&max_results={BATCH_SIZE}"
         )
 
         feed = feedparser.parse(url)
-        if not feed.entries:
+        entries = feed.entries
+
+        if not entries:
             break
 
-        for entry in feed.entries:
-            arxiv_id = entry.id.split("/")[-1]
+        for e in entries:
+            arxiv_id = e.id.split("/")[-1]
             if arxiv_id in processed_ids:
                 continue
-
-            # Zeitprüfung anhand "published"
-            published = datetime.strptime(entry.published, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-            if published < cutoff:
-                return new_articles  # Sobald zu alt → abbrechen
-
             new_articles.append({
                 "id":      arxiv_id,
-                "title":   entry.title.strip(),
-                "summary": entry.summary.replace("\n", " ").strip(),
-                "link":    entry.link
+                "title":   e.title.strip(),
+                "summary": e.summary.replace("\n", " ").strip(),
+                "link":    e.link
             })
 
-        start += batch_size
+        # Falls weniger als ein voller Batch geliefert wurde, sind wir fertig
+        if len(entries) < BATCH_SIZE:
+            break
+
+        start_index += BATCH_SIZE
 
     return new_articles
+
 
 
 
