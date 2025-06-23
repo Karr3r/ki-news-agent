@@ -59,15 +59,17 @@ def save_processed(data):
 
 
 # ─────────────── 1) arXiv‑Artikel holen mit Pagination ───────────────
+
+
 def fetch_articles():
-    PAGE_SIZE = 200   # wie viele Einträge pro Request
-    MAX_RESULTS = 2000  # Maximal 1000 insgesamt (kann beliebig erhöht werden)
-    base     = "http://export.arxiv.org/api/query?"
-    raw      = "cat:" + " OR cat:".join(CATEGORIES)
-    sq       = quote_plus(raw)
-    cutoff   = datetime.now(timezone.utc) - timedelta(days=DAYS_BACK)
-    new      = []
-    processed = processed_ids.copy()
+    PAGE_SIZE   = 200    # Einträge pro Request
+    MAX_RESULTS = 2000   # Maximal insgesamt (kann bei Bedarf erhöht werden)
+    base        = "http://export.arxiv.org/api/query?"
+    raw         = "cat:" + " OR cat:".join(CATEGORIES)
+    sq          = quote_plus(raw)
+    cutoff      = datetime.now(timezone.utc) - timedelta(days=DAYS_BACK)
+    new         = []
+    processed   = processed_ids.copy()
 
     # Schleife über alle Seiten
     for start in range(0, MAX_RESULTS, PAGE_SIZE):
@@ -77,25 +79,27 @@ def fetch_articles():
             f"&sortBy=submittedDate&sortOrder=descending"
             f"&start={start}&max_results={PAGE_SIZE}"
         )
-
         feed = feedparser.parse(url)
         if not feed.entries:
-            break  # keine weiteren Einträge
+            break  # keine weiteren Einträge vorhanden
+
+        any_new_this_page = False
 
         for e in feed.entries:
-            arxiv_id = e.id.split("/")[-1]
-            # bereits verarbeitet?
-            if arxiv_id in processed:
-                continue
-
-            # Veröffentlichungsdatum prüfen
             dt = datetime.strptime(e.published, "%Y-%m-%dT%H:%M:%SZ") \
                      .replace(tzinfo=timezone.utc)
             if dt < cutoff:
-                # da sortOrder=descending, können wir hier abbrechen:
-                return new
+                # Dieser einzelne Artikel ist zu alt, überspringen
+                continue
 
-            # neuen Artikel einsammeln
+            arxiv_id = e.id.split("/")[-1]
+            if arxiv_id in processed:
+                # Bereits verarbeitet
+                continue
+
+            # Wir haben hier mindestens einen gültigen Artikel
+            any_new_this_page = True
+
             new.append({
                 "id":      arxiv_id,
                 "title":   e.title.strip(),
@@ -103,10 +107,15 @@ def fetch_articles():
                 "link":    e.link
             })
 
-        # kleine Pause, um API nicht zu überlasten (optional)
-        time.sleep(1)
+        if not any_new_this_page:
+            # Auf dieser Seite gab es keinen einzigen neuen Artikel mehr
+            # — wir sind durch den Zeitraum, also abbrechen
+            break
+
+        time.sleep(1)  # Schonung der API
 
     return new
+
 
 
 
