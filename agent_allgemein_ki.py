@@ -199,10 +199,13 @@ def build_prompt(batch):
 
 #3 parsing
 def try_parse_json(text):
-    # 0) Markdown-Fences entfernen
+    # 0) Backslashes escapen, damit z.B. "\mu" kein ungültiges Escape wirft
+    text = text.replace("\\", "\\\\")
+
+    # 1) Markdown-Fences entfernen
     cleaned = re.sub(r"```(?:json)?", "", text, flags=re.IGNORECASE).strip()
 
-    # 1) Versuch: komplettes Textstück parsen
+    # 2) Versuch: komplettes Textstück parsen
     try:
         return json.loads(cleaned)
     except json.JSONDecodeError as e:
@@ -210,7 +213,7 @@ def try_parse_json(text):
         print("Zu parsender String:")
         print(cleaned)
 
-    # 2) Greedy-Extraktion: alles von erstem [ bis letztem ]
+    # 3) Greedy-Extraktion: alles von erstem [ bis letztem ]
     m = re.search(r"\[.*\]", cleaned, flags=re.DOTALL)
     if m:
         snippet = m.group(0)
@@ -221,8 +224,9 @@ def try_parse_json(text):
             print("Snippet:")
             print(snippet)
 
-    # 3) Fallback: leeres Array
+    # 4) Fallback: leeres Array
     return []
+
 
 
 
