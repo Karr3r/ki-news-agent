@@ -206,41 +206,31 @@ def build_prompt(batch):
 
 #3 parsing
 def try_parse_json(text):
-    import json, re
-
-    # 0) Entferne Markdown-Fences
+    # 0) Markdown-Fences entfernen
     cleaned = re.sub(r"```(?:json)?", "", text, flags=re.IGNORECASE).strip()
 
-    # 1) Direkter Parse-Versuch
+    # 1) Versuch: komplettes Textstück parsen
     try:
-        parsed = json.loads(cleaned)
-        if isinstance(parsed, list):
-            return parsed
-    except json.JSONDecodeError:
-        pass
+        return json.loads(cleaned)
+    except json.JSONDecodeError as e:
+        print(f"⚠️ JSON-Fehler beim Parsen des gesamten Inhalts: {e}")
+        print("Zu parsender String:")
+        print(cleaned)
 
-    # 2) Extrahiere JSON-Block innerhalb von ```json … ```
-    m = re.search(r"```json\s*(.*?)\s*```", text, re.DOTALL | re.IGNORECASE)
+    # 2) Greedy-Extraktion: alles von erstem [ bis letztem ]
+    m = re.search(r"\[.*\]", cleaned, flags=re.DOTALL)
     if m:
+        snippet = m.group(0)
         try:
-            parsed = json.loads(m.group(1).strip())
-            if isinstance(parsed, list):
-                return parsed
-        except json.JSONDecodeError:
-            pass
+            return json.loads(snippet)
+        except json.JSONDecodeError as e:
+            print(f"⚠️ JSON-Fehler beim Parsen des Snippets: {e}")
+            print("Snippet:")
+            print(snippet)
 
-    # 3) Suche erstes JSON-Array im Text (von "[" bis "]")
-    m = re.search(r"(\[\s*\{.*?\}\s*\])", text, re.DOTALL)
-    if m:
-        try:
-            parsed = json.loads(m.group(1))
-            if isinstance(parsed, list):
-                return parsed
-        except json.JSONDecodeError:
-            pass
-
-    # 4) Nichts gefunden → leeres Array
+    # 3) Fallback: leeres Array
     return []
+
 
 
 
