@@ -47,7 +47,7 @@ EMAIL_RECEIVER = os.getenv("EMAIL_RECEIVER")
 client = OpenAI(api_key=OPENAI_API_KEY)
 
 CATEGORIES       = ["cs.AI","cs.LG","cs.CR","cs.DC","cs.DB","cs.NI","cs.CY","stat.ML"]
-DAYS_BACK        = 8
+DAYS_BACK        = 15
 BATCH_SIZE       = 2
 RELEVANCE_CUTOFF = 9
 
@@ -81,7 +81,7 @@ def fetch_articles():
         "&sortBy=submittedDate"
         "&sortOrder=descending"
         "&start=0"
-        "&max_results=1000"
+        "&max_results=2000"
     )
 
     # 4) Abruf und Parsen
