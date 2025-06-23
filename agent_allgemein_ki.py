@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 import re
 
 # ========================
-# Lade Pfade aus Kommandozeile
+# Lade Pfade aus Kommandozeile.
 # ========================
 input_path  = sys.argv[1] if len(sys.argv) > 1 else "Data/processed_articles.json"
 output_path = sys.argv[2] if len(sys.argv) > 2 else "Data/processed_articles.json"
