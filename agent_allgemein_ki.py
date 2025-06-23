@@ -62,7 +62,7 @@ def save_processed(data):
 
 
 def fetch_articles():
-    batch_size = 1000
+    batch_size = 2750
     start = 0
     new_articles = []
 
