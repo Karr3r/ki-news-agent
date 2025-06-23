@@ -47,7 +47,7 @@ EMAIL_RECEIVER = os.getenv("EMAIL_RECEIVER")
 client = OpenAI(api_key=OPENAI_API_KEY)
 
 CATEGORIES       = ["cs.AI","cs.LG","cs.CR","cs.DC","cs.DB","cs.NI","cs.CY","stat.ML"]
-DAYS_BACK        = 11
+DAYS_BACK        = 7
 BATCH_SIZE       = 2
 RELEVANCE_CUTOFF = 9
 
@@ -62,51 +62,54 @@ def save_processed(data):
 
 
 def fetch_articles():
-    PAGE_SIZE = 200  # Einträge pro Request
-    base      = "http://export.arxiv.org/api/query?"
-    cats      = " OR ".join(f"cat:{c}" for c in CATEGORIES)
-    sq        = quote_plus(cats)
+    batch_size = 1000
+    start = 0
+    new_articles = []
 
-    cutoff = datetime.now(timezone.utc) - timedelta(days=DAYS_BACK)
-    new    = []
+    # 1) Nur Kategorien in Query – kein submittedDate-Filter!
+    cats = " OR ".join(f"cat:{c}" for c in CATEGORIES)
+    sq = quote_plus(f"({cats})")
 
-    for start in range(0, 1000000, PAGE_SIZE):  # großer Oberwert, bricht intern ab
+    # 2) Zeitgrenze lokal berechnen
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=DAYS_BACK)
+
+    # 3) Pagination-Schleife
+    while True:
         url = (
-            f"{base}"
+            "http://export.arxiv.org/api/query?"
             f"search_query={sq}"
-            f"&sortBy=submittedDate&sortOrder=descending"
-            f"&start={start}&max_results={PAGE_SIZE}"
+            "&sortBy=submittedDate"
+            "&sortOrder=descending"
+            f"&start={start}"
+            f"&max_results={batch_size}"
         )
+
         feed = feedparser.parse(url)
         if not feed.entries:
-            break  # keine weiteren Einträge
+            break
 
-        any_new = False
-        for e in feed.entries:
-            dt = datetime.strptime(e.published, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-            if dt < cutoff:
-                # ab hier sind alle weiteren zu alt (descending sortiert), also Seite abbrechen
-                any_new = False
-                break
-
-            arxiv_id = e.id.split("/")[-1]
+        for entry in feed.entries:
+            arxiv_id = entry.id.split("/")[-1]
             if arxiv_id in processed_ids:
                 continue
 
-            any_new = True
-            new.append({
+            # Zeitprüfung anhand "published"
+            published = datetime.strptime(entry.published, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+            if published < cutoff:
+                return new_articles  # Sobald zu alt → abbrechen
+
+            new_articles.append({
                 "id":      arxiv_id,
-                "title":   e.title.strip(),
-                "summary": e.summary.replace("\n", " ").strip(),
-                "link":    e.link
+                "title":   entry.title.strip(),
+                "summary": entry.summary.replace("\n", " ").strip(),
+                "link":    entry.link
             })
 
-        if not any_new:
-            break  # keine neuen Artikel mehr im Zeitfenster
+        start += batch_size
 
-        time.sleep(1)  # API schonen
+    return new_articles
 
-    return new
 
 
 
