@@ -62,43 +62,52 @@ def save_processed(data):
 
 
 def fetch_articles():
-    # 1) Zeitfenster als arXiv-Date‐Range
-    now       = datetime.now(timezone.utc)
-    cutoff    = now - timedelta(days=DAYS_BACK)
-    start_str = cutoff.strftime("%Y%m%d000000")
-    end_str   = now.strftime("%Y%m%d235959")
-
-    # 2) Query mit Kategorie- und Datums‐Filter
+    PAGE_SIZE = 200  # Einträge pro Request
+    base      = "http://export.arxiv.org/api/query?"
     cats      = " OR ".join(f"cat:{c}" for c in CATEGORIES)
-    date_rng  = f"submittedDate:[{start_str} TO {end_str}]"
-    raw_query = f"({cats}) AND {date_rng}"
-    sq        = quote_plus(raw_query)
+    sq        = quote_plus(cats)
 
-    # 3) URL mit ausreichend hohem max_results
-    url = (
-        "http://export.arxiv.org/api/query?"
-        f"search_query={sq}"
-        "&sortBy=submittedDate"
-        "&sortOrder=descending"
-        "&start=0"
-        "&max_results=100000"
-    )
+    cutoff = datetime.now(timezone.utc) - timedelta(days=DAYS_BACK)
+    new    = []
 
-    # 4) Abruf und Parsen
-    feed = feedparser.parse(url)
-    new_articles = []
-    for e in feed.entries:
-        arxiv_id = e.id.split("/")[-1]
-        if arxiv_id in processed_ids:
-            continue
-        new_articles.append({
-            "id":      arxiv_id,
-            "title":   e.title.strip(),
-            "summary": e.summary.replace("\n", " ").strip(),
-            "link":    e.link
-        })
+    for start in range(0, 1000000, PAGE_SIZE):  # großer Oberwert, bricht intern ab
+        url = (
+            f"{base}"
+            f"search_query={sq}"
+            f"&sortBy=submittedDate&sortOrder=descending"
+            f"&start={start}&max_results={PAGE_SIZE}"
+        )
+        feed = feedparser.parse(url)
+        if not feed.entries:
+            break  # keine weiteren Einträge
 
-    return new_articles
+        any_new = False
+        for e in feed.entries:
+            dt = datetime.strptime(e.published, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+            if dt < cutoff:
+                # ab hier sind alle weiteren zu alt (descending sortiert), also Seite abbrechen
+                any_new = False
+                break
+
+            arxiv_id = e.id.split("/")[-1]
+            if arxiv_id in processed_ids:
+                continue
+
+            any_new = True
+            new.append({
+                "id":      arxiv_id,
+                "title":   e.title.strip(),
+                "summary": e.summary.replace("\n", " ").strip(),
+                "link":    e.link
+            })
+
+        if not any_new:
+            break  # keine neuen Artikel mehr im Zeitfenster
+
+        time.sleep(1)  # API schonen
+
+    return new
+
 
 
 
@@ -199,19 +208,22 @@ def build_prompt(batch):
 
 #3 parsing
 def try_parse_json(text):
-    # 0) Backslashes escapen, damit z.B. "\mu" kein ungültiges Escape wirft
-    text = text.replace("\\", "\\\\")
-
-    # 1) Markdown-Fences entfernen
+    # 0) JSON-Fences und Whitespace entfernen
     cleaned = re.sub(r"```(?:json)?", "", text, flags=re.IGNORECASE).strip()
 
-    # 2) Versuch: komplettes Textstück parsen
+    # 1) Ungültige Backslashes entwerten: \m, \$, \μ, … → \\m, \\$, \\μ, …
+    #    Erlaubt bleiben nur die Standard-Escapes \" \\ \/ \b \f \n \r \t \uXXXX
+    cleaned = re.sub(
+        r'\\(?!["\\/bfnrtu])',  # Backslash, wenn nicht gefolgt von "\/bfnrtu
+        r'\\\\',                # durch '\\' ersetzen
+        cleaned
+    )
+
+    # 2) Versuch: kompletten String parsen
     try:
         return json.loads(cleaned)
     except json.JSONDecodeError as e:
         print(f"⚠️ JSON-Fehler beim Parsen des gesamten Inhalts: {e}")
-        print("Zu parsender String:")
-        print(cleaned)
 
     # 3) Greedy-Extraktion: alles von erstem [ bis letztem ]
     m = re.search(r"\[.*\]", cleaned, flags=re.DOTALL)
@@ -221,8 +233,6 @@ def try_parse_json(text):
             return json.loads(snippet)
         except json.JSONDecodeError as e:
             print(f"⚠️ JSON-Fehler beim Parsen des Snippets: {e}")
-            print("Snippet:")
-            print(snippet)
 
     # 4) Fallback: leeres Array
     return []
