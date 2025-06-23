@@ -205,32 +205,43 @@ def build_prompt(batch):
 
 
 #3 parsing
-
-
 def try_parse_json(text):
-    # 0) Markdown-Fences entfernen
-    text = re.sub(r"```(?:json)?", "", text, flags=re.IGNORECASE)
+    import json, re
 
-    # 1) Whitespace trimmen
-    text = text.strip()
+    # 0) Entferne Markdown-Fences
+    cleaned = re.sub(r"```(?:json)?", "", text, flags=re.IGNORECASE).strip()
 
-    # 2) Versuch: komplettes Textstück parsen
+    # 1) Direkter Parse-Versuch
     try:
-        return json.loads(text)
+        parsed = json.loads(cleaned)
+        if isinstance(parsed, list):
+            return parsed
     except json.JSONDecodeError:
         pass
 
-    # 3) Greedy-Extraktion: alles von [ bis zum letzten ]
-    m = re.search(r"\[.*\]", text, flags=re.DOTALL)
+    # 2) Extrahiere JSON-Block innerhalb von ```json … ```
+    m = re.search(r"```json\s*(.*?)\s*```", text, re.DOTALL | re.IGNORECASE)
     if m:
-        snippet = m.group(0)
         try:
-            return json.loads(snippet)
+            parsed = json.loads(m.group(1).strip())
+            if isinstance(parsed, list):
+                return parsed
         except json.JSONDecodeError:
             pass
 
-    # 4) Fallback: leeres Array
+    # 3) Suche erstes JSON-Array im Text (von "[" bis "]")
+    m = re.search(r"(\[\s*\{.*?\}\s*\])", text, re.DOTALL)
+    if m:
+        try:
+            parsed = json.loads(m.group(1))
+            if isinstance(parsed, list):
+                return parsed
+        except json.JSONDecodeError:
+            pass
+
+    # 4) Nichts gefunden → leeres Array
     return []
+
 
 
 
