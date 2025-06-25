@@ -257,6 +257,7 @@ def analyze(articles):
 
     total_batches = (len(articles) + BATCH_SIZE - 1) // BATCH_SIZE
 
+    # 1) Batch-Verarbeitung
     for i in range(0, len(articles), BATCH_SIZE):
         batch_num = i // BATCH_SIZE + 1
         batch = articles[i:i+BATCH_SIZE]
@@ -284,21 +285,21 @@ def analyze(articles):
         else:
             for rec, art in zip(parsed, batch):
                 rec.update({
-                    "id":       art["id"],
-                    "link":     art["link"],
+                    "id":   art["id"],
+                    "link": art["link"],
                 })
                 rec.setdefault("title", art["title"])
                 rec.setdefault("relevance", 0)
                 rec.setdefault("summary", "")
                 rec.setdefault("key_figures", [])
-            analyses.extend(parsed)
+                analyses.append(rec)
 
-    # Retry der fehlgeschlagenen Artikel – einzeln
+    # 2) Einzel-Retry für fehlgeschlagene Artikel
     for batch, original_content in failed_batches:
         for art in batch:
-            # Extrahiere ursprüngliches Rating
+            # altes Rating extrahieren
             m = re.search(r'"relevance"\s*:\s*([0-9]+)', original_content)
-            old_score = m.group(1) if m else None
+            old_score = m.group(1) if m else "n/a"
 
             print(f"⏳ Retry Artikel ID {art['id']} einzeln (orig. score={old_score})...")
 
@@ -332,7 +333,7 @@ def analyze(articles):
                 analyses.append(rec)
             else:
                 print(f"❌ Retry fehlgeschlagen für Artikel ID {art['id']}")
-                print("🔎 Retry-Antwort war:\n", retry_content)
+                print("🔎 Retry-Antwort war:\n{retry_content}")
 
     return analyses
 
