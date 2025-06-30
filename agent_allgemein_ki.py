@@ -264,7 +264,7 @@ def analyze(articles):
         print(f"Analysiere Batch {batch_num}/{total_batches}")
 
         resp = client.chat.completions.create(
-            model="gpt-3.5-turbo",
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": PROMPT},
                 {"role": "user",   "content": build_prompt(batch)},
