@@ -302,7 +302,7 @@ def analyze(articles):
         print(f"⏳ Retry Artikel ID {art['id']} einzeln (orig. score={old_score})...")
 
         retry_resp = client.chat.completions.create(
-            model="gpt-3.5-turbo",
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system",    "content": PROMPT},
                 {"role": "user",      "content": build_prompt([art])},
